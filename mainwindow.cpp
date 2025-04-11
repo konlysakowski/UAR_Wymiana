@@ -6,7 +6,8 @@
 #include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_timer(new QTimer(this)),  m_time(0), m_prevSetpoint(0.0), m_prevOutput(0.0) {
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_timer(new QTimer(this)),  m_time(0), m_prevSetpoint(0.0), m_prevOutput(0.0),
+     m_client(new NetworkClient(this)), m_server(new NetworkServer(this)) {
 
     ui->setupUi(this);
 
@@ -37,7 +38,23 @@ MainWindow::MainWindow(QWidget *parent)
     this->ui->cyklLabel->setValue(0.5);
     this->ui->aktywacjaLabel->setValue(1);
 
+    connect(m_client, &NetworkClient::connected, this, [this]() {
+        aktualizujStatusPolaczenia(true);
+    });
+
+    connect(m_client, &NetworkClient::disconnected, this, [this]() {
+        aktualizujStatusPolaczenia(false);
+    });
+
+    connect(m_server, &NetworkServer::clientConnected, this, [this]() {
+        aktualizujStatusPolaczenia(true);
+    });
+
+    connect(m_server, &NetworkServer::clientDisconnected, this, [this]() {
+        aktualizujStatusPolaczenia(false);
+    });
 }
+
 
 MainWindow::~MainWindow() {
     delete ui;
@@ -243,7 +260,7 @@ initSimulation();
 
         zoom(false);
         m_timer->start(this->ui->interwalSpinBox->value());
-    } catch (const std::exception& ex) {
+    } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd", ex.what());
     }
 
@@ -304,7 +321,7 @@ void MainWindow::updateAllParams() {
             }
 
         }
-    } catch (const std::exception& ex) {
+    } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd aktualizacji", ex.what());
     }
 }
@@ -387,7 +404,7 @@ void MainWindow::updateSimulation() {
         m_time++;
         m_prevOutput = output;
         m_prevSetpoint = setpoint;
-    } catch (const std::exception& ex) {
+    } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd symulacji", ex.what());
         stopSimulation();
     }
@@ -428,4 +445,54 @@ void MainWindow::on_resetI_clicked()
 
 }
 
+
+
+void MainWindow::on_networkModeCheckBox_stateChanged(int state)
+{
+    bool sieciowy = state == Qt::Checked;
+    QString rola = ui->RoleComboBox->currentText();
+
+    if (sieciowy)
+    {
+        if (rola == "Regulator")
+        {
+            m_client->connectToServer("127.0.0.1", 1234);
+        }
+        else if (rola == "Model ARX")
+        {
+            m_server->startListening(1234);
+        }
+    }
+    else
+    {
+        if (rola == "Regulator")
+        {
+            m_client->disconnectFromHost();
+        }
+        else if (rola == "Model ARX")
+        {
+            m_server->stopListening();
+        }
+
+        aktualizujStatusPolaczenia(false);
+    }
+
+    blokujGUIWDanymTrybie(sieciowy);
+}
+
+void MainWindow::blokujGUIWDanymTrybie(bool sieciowy)
+{
+
+}
+
+void MainWindow::aktualizujStatusPolaczenia(bool connected)
+{
+    if (connected) {
+        ui->connectionStatusLabel->setText("Połączono");
+        ui->connectionStatusLabel->setStyleSheet("QLabel { color: green; font-weight: bold; }");
+    } else {
+        ui->connectionStatusLabel->setText("Brak połączenia");
+        ui->connectionStatusLabel->setStyleSheet("QLabel { color: red; font-weight: bold; }");
+    }
+}
 

@@ -1,11 +1,16 @@
 #pragma once
 
+#include <QObject>
 #include <QMainWindow>
 #include <QTimer>
 #include <memory>
 #include <QGraphicsScene>
 #include "klasy.h"
 #include "qcustomplot.h"
+#include "NetworkClient.h"
+#include "NetworkServer.h"
+
+
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -28,6 +33,9 @@ private slots:
 
     void on_resetI_clicked();
 
+
+    void on_networkModeCheckBox_stateChanged(int state);
+    void aktualizujStatusPolaczenia(bool connected);
 
 private:
     Ui::MainWindow *ui;
@@ -55,4 +63,9 @@ private:
     std::unique_ptr<ARX> updateARXParams();
     std::unique_ptr<PID> updatePIDParams();
     void keyPressEvent(QKeyEvent *event);
+
+    bool jestRegulatorem;
+    NetworkClient *m_client;
+    NetworkServer *m_server;
+    void blokujGUIWDanymTrybie(bool sieciowy);
 };
