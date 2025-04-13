@@ -451,12 +451,13 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
 {
     bool sieciowy = state == Qt::Checked;
     QString rola = ui->RoleComboBox->currentText();
+    QString ip = ui->ipLineEdit->text();
 
     if (sieciowy)
     {
         if (rola == "Regulator")
         {
-            m_client->connectToServer("127.0.0.1", 1234);
+            m_client->connectToServer(ip, 1234);
         }
         else if (rola == "Model ARX")
         {
@@ -483,6 +484,33 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
 void MainWindow::blokujGUIWDanymTrybie(bool sieciowy)
 {
 
+    if(ui->RoleComboBox->currentText() == "Regulator")
+    {
+            ui->zmienARX->setDisabled(sieciowy);
+            ui->vecaLabel->setDisabled(sieciowy);
+            ui->vecbLabel->setDisabled(sieciowy);
+            ui->delayLabel->setDisabled(sieciowy);
+            ui->zakloceniaLabel->setDisabled(sieciowy);
+    }
+    else if(ui->RoleComboBox->currentText() == "Model ARX")
+    {
+            ui->kpLabel->setDisabled(sieciowy);
+            ui->tiLabel->setDisabled(sieciowy);
+            ui->tdLabel->setDisabled(sieciowy);
+            ui->liczenieCalkiLabel->setDisabled(sieciowy);
+            ui->resetI->setDisabled(sieciowy);
+            ui->amplitudaLabel->setDisabled(sieciowy);
+            ui->okresLabel->setDisabled(sieciowy);
+            ui->sygnalcomboBox->setDisabled(sieciowy);
+            ui->cyklLabel->setDisabled(sieciowy);
+            ui->aktywacjaLabel->setDisabled(sieciowy);
+            ui->interwalSpinBox->setDisabled(sieciowy);
+            ui->startButton->setDisabled(sieciowy);
+            ui->stopButton->setDisabled(sieciowy);
+            ui->resetButton->setDisabled(sieciowy);
+            ui->aktualizujButton->setDisabled(sieciowy);
+
+    }
 }
 
 void MainWindow::aktualizujStatusPolaczenia(bool connected)

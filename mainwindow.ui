@@ -156,6 +156,13 @@
        </widget>
       </item>
       <item>
+       <widget class="QLineEdit" name="ipLineEdit">
+        <property name="text">
+         <string>127.0.0.1</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QCheckBox" name="networkModeCheckBox">
         <property name="text">
          <string>Tryb sieciowy</string>
