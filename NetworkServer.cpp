@@ -13,6 +13,7 @@ NetworkServer::NetworkServer(QObject *parent)
             m_clientSocket = nullptr;
             emit clientDisconnected();
         });
+        connect(m_clientSocket, &QTcpSocket::readyRead, this, &NetworkServer::onReadyRead);
         emit clientConnected();
     });
 }
@@ -35,4 +36,32 @@ void NetworkServer::stopListening()
         m_clientSocket = nullptr;
     }
     m_server->close();
+}
+
+void NetworkServer::sendValue(double value)
+{
+    if (!m_clientSocket || m_clientSocket->state() != QAbstractSocket::ConnectedState)
+        return;
+
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(QDataStream::Qt_6_0);
+    stream << value;
+
+    m_clientSocket->write(data);
+    m_clientSocket->flush();
+}
+
+void NetworkServer::onReadyRead()
+{
+    if (!m_clientSocket) return;
+
+    QDataStream stream(m_clientSocket);
+    stream.setVersion(QDataStream::Qt_6_0);
+
+    while (m_clientSocket->bytesAvailable() >= sizeof(double)) {
+        double value;
+        stream >> value;
+        emit valueReceived(value);
+    }
 }

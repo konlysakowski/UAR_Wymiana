@@ -20,4 +20,5 @@ class PID {
     
         double obliczP_TiWSumie(double cel, double zmierzone);
         double obliczI_TiWSumie(double cel, double zmierzone);
+
     };
