@@ -15,6 +15,7 @@ public:
     bool isClientConnected() const;
     void stopListening();
     void sendValue(double value);
+    bool receiveData(float &value);
 
 signals:
     void clientConnected();
@@ -25,8 +26,6 @@ private:
     QTcpServer *m_server;
     QTcpSocket *m_clientSocket;
 
-private slots:
-    void onReadyRead();
 
 
 };

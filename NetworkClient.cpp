@@ -5,7 +5,6 @@ NetworkClient::NetworkClient(QObject *parent)
 {
     connect(m_socket, &QTcpSocket::connected, this, &NetworkClient::onConnected);
     connect(m_socket, &QTcpSocket::disconnected, this, &NetworkClient::onDisconnected);
-    connect(m_socket, &QTcpSocket::readyRead, this, &NetworkClient::onReadyRead);
 }
 
 void NetworkClient::connectToServer(const QString &host, quint16 port)
@@ -48,14 +47,23 @@ void NetworkClient::sendValue(double value)
     m_socket->flush();
 }
 
-void NetworkClient::onReadyRead()
-{
-    QDataStream stream(m_socket);
-    stream.setVersion(QDataStream::Qt_6_0);
 
-    while (m_socket->bytesAvailable() >= sizeof(double)) {
-        double value;
-        stream >> value;
-        emit valueReceived(value);
+bool NetworkClient::receiveData(float &value)
+{
+    if (!m_socket)
+        return false;
+
+    if (!m_socket->bytesAvailable()) {
+        if (!m_socket->waitForReadyRead(200))  // ❗ czas oczekiwania
+            return false;
     }
+
+    if (m_socket->bytesAvailable() >= static_cast<int>(sizeof(float))) {
+        QDataStream stream(m_socket);
+        stream.setVersion(QDataStream::Qt_6_0);
+        stream >> value;
+        return true;
+    }
+
+    return false;
 }

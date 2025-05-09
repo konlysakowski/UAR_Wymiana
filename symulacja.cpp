@@ -1,16 +1,7 @@
 #include "symulacja.h"
 
-
-
-
-
-
-
-
-
-
-Symulacja::Symulacja(std::unique_ptr<ARX> arx, std::unique_ptr<PID> pid, std::unique_ptr<WartoscZadana> wartoscZadana)
-    : m_ARX(std::move(arx)), m_PID(std::move(pid)), m_WartoscZadana(std::move(wartoscZadana)), m_zadane(0.0), m_zmierzone(0.0) {}
+Symulacja::Symulacja(std::unique_ptr<ARX> arx, std::unique_ptr<PID> pid, std::unique_ptr<WartoscZadana> wartoscZadana, QObject* parent)
+    :QObject(parent), m_ARX(std::move(arx)), m_PID(std::move(pid)), m_WartoscZadana(std::move(wartoscZadana)), m_zadane(0.0), m_zmierzone(0.0) {}
 
 
 void Symulacja::setARX(std::unique_ptr<ARX> arx) {
@@ -30,15 +21,69 @@ void Symulacja::setZadane(double zadane) {
 }
 
 double Symulacja::krok() {
-    if (!m_WartoscZadana || !m_PID || !m_ARX) {
-        throw std::logic_error("Symulacja nie zosta�a poprawnie zainicjalizowana.");
+
+    if(!m_trybSieciowy)
+    {
+        qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
+        m_zadane = m_WartoscZadana->generuj();
+        double u = m_PID->oblicz(m_zadane, m_zmierzone);
+        m_zmierzone = m_ARX->krok(u);
+        return m_zmierzone;
+    }
+    else
+    {
+        qDebug() << "Symulacja::krok() wywołany. m_tryb =" << static_cast<int>(m_tryb);
+        switch (m_tryb)
+        {
+        case TrybSymulacji::Regulator: {
+            qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
+            m_zadane = m_WartoscZadana->generuj();
+            qDebug() << "Poszedł za m_zadane";
+            double sygnalSterujacy = m_PID->oblicz(m_zadane, m_zmierzone);
+            qDebug() << "Sygnał sterujący obliczony";
+            if (m_Client && m_Client->isConnected()) {
+                m_Client->sendValue(static_cast<float>(sygnalSterujacy));
+                qDebug() << "Wartość wysłana";
+                float odpowiedz = 0.0f;
+                if (m_Client->receiveData(odpowiedz)) {
+                    qDebug() << "Odebrano wartość regulowaną:" << odpowiedz;
+                    m_zmierzone = static_cast<double>(odpowiedz);
+                    emit statusKomunikacji(true);
+                } else {
+                     qDebug() << "Nie odebrano danych.";
+                    emit statusKomunikacji(false);
+                }
+            } else {
+                emit statusKomunikacji(false);
+            }
+
+            return m_zmierzone;
+        }
+
+        case TrybSymulacji::ModelARX: {
+            qDebug() << ">>> Wszedłem do ModelARX";
+            qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
+            if (m_Server && m_Server->isClientConnected()) {
+                float u;
+                if (m_Server->receiveData(u)) {
+                    qDebug() << "Odebrano u:" << u;
+                    double y = m_ARX->krok(static_cast<double>(u));
+                    qDebug() << "Wysyłam y:" << y;
+                    m_Server->sendValue(static_cast<float>(y));
+                }
+            }
+            return 0.0;
+        }
+
+        case TrybSymulacji::Lokalny:
+        default:
+            return 0.0;
+        }
     }
 
-    m_zadane = m_WartoscZadana->generuj();
-    double sygnal = m_PID->oblicz(m_zadane, m_zmierzone);
-    m_zmierzone = m_ARX->krok(sygnal);
-    return m_zmierzone;
+
 }
+
 double Symulacja::krok_TiWSumie() {
     if (!m_WartoscZadana || !m_PID || !m_ARX) {
         throw std::logic_error("Symulacja nie zosta�a poprawnie zainicjalizowana.");
@@ -64,3 +109,4 @@ void Symulacja::aktualizujParametryARX(const std::vector<double>& vec_a, const s
         m_ARX->setZaklocenia(zaklocenia);
     }
 }
+

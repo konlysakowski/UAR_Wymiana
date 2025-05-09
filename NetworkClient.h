@@ -14,6 +14,7 @@ public:
     bool isConnected() const;
     void disconnectFromHost();
     void sendValue(double value);
+    bool receiveData(float &value);
 
 signals:
     void connected();
@@ -23,7 +24,6 @@ signals:
 private slots:
     void onConnected();
     void onDisconnected();
-    void onReadyRead();
 
 private:
     QTcpSocket *m_socket;

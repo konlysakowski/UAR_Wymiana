@@ -13,7 +13,7 @@ NetworkServer::NetworkServer(QObject *parent)
             m_clientSocket = nullptr;
             emit clientDisconnected();
         });
-        connect(m_clientSocket, &QTcpSocket::readyRead, this, &NetworkServer::onReadyRead);
+
         emit clientConnected();
     });
 }
@@ -40,7 +40,7 @@ void NetworkServer::stopListening()
 
 void NetworkServer::sendValue(double value)
 {
-    if (!m_clientSocket || m_clientSocket->state() != QAbstractSocket::ConnectedState)
+    if (!m_clientSocket)
         return;
 
     QByteArray data;
@@ -52,16 +52,27 @@ void NetworkServer::sendValue(double value)
     m_clientSocket->flush();
 }
 
-void NetworkServer::onReadyRead()
+
+bool NetworkServer::receiveData(float &value)
 {
-    if (!m_clientSocket) return;
+    if (!m_clientSocket)
+        return false;
 
-    QDataStream stream(m_clientSocket);
-    stream.setVersion(QDataStream::Qt_6_0);
 
-    while (m_clientSocket->bytesAvailable() >= sizeof(double)) {
-        double value;
-        stream >> value;
-        emit valueReceived(value);
+    if (m_clientSocket->bytesAvailable() < static_cast<int>(sizeof(float))) {
+        if (!m_clientSocket->waitForReadyRead(200))  // 200 ms timeout
+            return false;
     }
+
+
+    if (m_clientSocket->bytesAvailable() >= static_cast<int>(sizeof(float))) {
+        QDataStream stream(m_clientSocket);
+        stream.setVersion(QDataStream::Qt_6_0);  // zgodność z klientem!
+        stream >> value;
+        return true;
+    }
+
+    return false;
+
+
 }
