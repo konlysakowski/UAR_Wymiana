@@ -52,27 +52,43 @@ void NetworkServer::sendValue(double value)
     m_clientSocket->flush();
 }
 
-
-bool NetworkServer::receiveData(float &value)
+void NetworkServer::onReadyRead()
 {
     if (!m_clientSocket)
-        return false;
+        return;
 
+    QDataStream stream(m_clientSocket);
+    stream.setVersion(QDataStream::Qt_6_0);
 
-    if (m_clientSocket->bytesAvailable() < static_cast<int>(sizeof(float))) {
-        if (!m_clientSocket->waitForReadyRead(200))  // 200 ms timeout
-            return false;
+    while (m_clientSocket->bytesAvailable() >= static_cast<int>(sizeof(double))) {
+        double u;
+        stream >> u;
+        qDebug() << "[ARX] Otrzymano sterowanie u =" << u;
+        emit sterowanieOdebrane(u);
     }
-
-
-    if (m_clientSocket->bytesAvailable() >= static_cast<int>(sizeof(float))) {
-        QDataStream stream(m_clientSocket);
-        stream.setVersion(QDataStream::Qt_6_0);  // zgodność z klientem!
-        stream >> value;
-        return true;
-    }
-
-    return false;
-
-
 }
+
+
+// bool NetworkServer::receiveData(float &value)
+// {
+//     if (!m_clientSocket)
+//         return false;
+
+
+//     if (m_clientSocket->bytesAvailable() < static_cast<int>(sizeof(float))) {
+//         if (!m_clientSocket->waitForReadyRead(200))  // 200 ms timeout
+//             return false;
+//     }
+
+
+//     if (m_clientSocket->bytesAvailable() >= static_cast<int>(sizeof(float))) {
+//         QDataStream stream(m_clientSocket);
+//         stream.setVersion(QDataStream::Qt_6_0);  // zgodność z klientem!
+//         stream >> value;
+//         return true;
+//     }
+
+//     return false;
+
+
+// }

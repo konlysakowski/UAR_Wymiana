@@ -48,7 +48,7 @@ void NetworkClient::sendValue(double value)
 }
 
 
-bool NetworkClient::receiveData(float &value)
+bool NetworkClient::receiveData(double &value)
 {
     if (!m_socket)
         return false;
@@ -58,7 +58,7 @@ bool NetworkClient::receiveData(float &value)
             return false;
     }
 
-    if (m_socket->bytesAvailable() >= static_cast<int>(sizeof(float))) {
+    if (m_socket->bytesAvailable() >= static_cast<int>(sizeof(double))) {
         QDataStream stream(m_socket);
         stream.setVersion(QDataStream::Qt_6_0);
         stream >> value;

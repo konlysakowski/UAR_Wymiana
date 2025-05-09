@@ -15,12 +15,15 @@ public:
     bool isClientConnected() const;
     void stopListening();
     void sendValue(double value);
-    bool receiveData(float &value);
+   // bool receiveData(float &value);
 
 signals:
     void clientConnected();
     void clientDisconnected();
-    void valueReceived(double value);
+    void sterowanieOdebrane(float u);
+
+private slots:
+    void onReadyRead();
 
 private:
     QTcpServer *m_server;

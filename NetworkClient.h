@@ -14,7 +14,7 @@ public:
     bool isConnected() const;
     void disconnectFromHost();
     void sendValue(double value);
-    bool receiveData(float &value);
+    bool receiveData(double &value);
 
 signals:
     void connected();

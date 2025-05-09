@@ -29,12 +29,12 @@ public:
 
     enum class TrybSymulacji { Regulator, ModelARX, Lokalny };
     void ustawStatusKomunikacji(bool ok);
-    TrybSymulacji m_tryb = TrybSymulacji::Lokalny;
     void ustawTrybSieciowy(bool sieciowy) { m_trybSieciowy = sieciowy; }
     void setClient(NetworkClient *client) { m_Client = client; }
     void setServer(NetworkServer *server) { m_Server = server; }
-
-
+    double przetworzSterowanie(float u);
+    void ustawTryb(TrybSymulacji tryb) { m_tryb = tryb; }
+    TrybSymulacji getTryb() {return m_tryb;}
 
 protected:
         std::unique_ptr<ARX> m_ARX;
@@ -44,6 +44,7 @@ protected:
         NetworkClient* m_Client;
         NetworkServer* m_Server;
         bool m_trybSieciowy = false;
+        TrybSymulacji m_tryb;
 
 
 signals:

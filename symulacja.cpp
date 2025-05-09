@@ -33,21 +33,20 @@ double Symulacja::krok() {
     else
     {
         qDebug() << "Symulacja::krok() wywołany. m_tryb =" << static_cast<int>(m_tryb);
-        switch (m_tryb)
-        {
-        case TrybSymulacji::Regulator: {
+
+        if(m_tryb == TrybSymulacji::Regulator) {
             qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
             m_zadane = m_WartoscZadana->generuj();
             qDebug() << "Poszedł za m_zadane";
             double sygnalSterujacy = m_PID->oblicz(m_zadane, m_zmierzone);
             qDebug() << "Sygnał sterujący obliczony";
             if (m_Client && m_Client->isConnected()) {
-                m_Client->sendValue(static_cast<float>(sygnalSterujacy));
+                m_Client->sendValue(sygnalSterujacy);
                 qDebug() << "Wartość wysłana";
-                float odpowiedz = 0.0f;
+                double odpowiedz;
                 if (m_Client->receiveData(odpowiedz)) {
                     qDebug() << "Odebrano wartość regulowaną:" << odpowiedz;
-                    m_zmierzone = static_cast<double>(odpowiedz);
+                    m_zmierzone = odpowiedz;
                     emit statusKomunikacji(true);
                 } else {
                      qDebug() << "Nie odebrano danych.";
@@ -58,26 +57,6 @@ double Symulacja::krok() {
             }
 
             return m_zmierzone;
-        }
-
-        case TrybSymulacji::ModelARX: {
-            qDebug() << ">>> Wszedłem do ModelARX";
-            qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
-            if (m_Server && m_Server->isClientConnected()) {
-                float u;
-                if (m_Server->receiveData(u)) {
-                    qDebug() << "Odebrano u:" << u;
-                    double y = m_ARX->krok(static_cast<double>(u));
-                    qDebug() << "Wysyłam y:" << y;
-                    m_Server->sendValue(static_cast<float>(y));
-                }
-            }
-            return 0.0;
-        }
-
-        case TrybSymulacji::Lokalny:
-        default:
-            return 0.0;
         }
     }
 
@@ -108,5 +87,10 @@ void Symulacja::aktualizujParametryARX(const std::vector<double>& vec_a, const s
         m_ARX->setDelay(delay);
         m_ARX->setZaklocenia(zaklocenia);
     }
+}
+
+double Symulacja::przetworzSterowanie(float u)
+{
+    return m_ARX->krok(static_cast<double>(u));
 }
 

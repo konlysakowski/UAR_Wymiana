@@ -181,11 +181,11 @@ void MainWindow::initSimulation() {
 
             if(ui->RoleComboBox->currentText() == "Regulator")
             {
-                m_symulacja->m_tryb = Symulacja::TrybSymulacji::Regulator;
+                m_symulacja->ustawTryb(Symulacja::TrybSymulacji::Regulator);
             }
             else if(ui->RoleComboBox->currentText() == "Model ARX")
             {
-                m_symulacja->m_tryb = Symulacja::TrybSymulacji::ModelARX;
+                m_symulacja->ustawTryb(Symulacja::TrybSymulacji::ModelARX);
             }
             qDebug() << "Wybrana rola:" << ui->RoleComboBox->currentText();
 
@@ -193,17 +193,16 @@ void MainWindow::initSimulation() {
         else
         {
             m_symulacja->ustawTrybSieciowy(false);
-            m_symulacja->m_tryb = Symulacja::TrybSymulacji::Lokalny;
+            m_symulacja->ustawTryb(Symulacja::TrybSymulacji::Lokalny);
         }
 
-        if (m_symulacja->m_tryb == Symulacja::TrybSymulacji::ModelARX) {
-            connect(m_timer, &QTimer::timeout, this, [this]() {
-                qDebug() << "Model ARX krok() tick";
-                if (m_symulacja){
-                    m_symulacja->krok();
+        if (m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX) {
+            connect(m_server, &NetworkServer::sterowanieOdebrane, this, [this](float u) {
+                if (m_symulacja) {
+                    double y = m_symulacja->przetworzSterowanie(u);
+                    m_server->sendValue(y);
                 }
             });
-            m_timer->start(10);
         }
 
         m_symulacja->setClient(m_client);
@@ -369,7 +368,7 @@ void MainWindow::updateAllParams() {
 
 void MainWindow::updateSimulation() {
     try {
-        if(m_symulacja->m_tryb == Symulacja::TrybSymulacji::Lokalny || m_symulacja->m_tryb == Symulacja::TrybSymulacji::Regulator)
+        if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::Lokalny || m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator)
         {
             double setpoint = m_symulacja->getWartoscZadana()->generuj();
             double measured = m_prevOutput;
