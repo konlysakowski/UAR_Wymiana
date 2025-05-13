@@ -1,4 +1,5 @@
 #include "arx.h"
+#include <stdexcept>
 ARX::ARX(const std::vector<double>& vec_a, const std::vector<double>& vec_b, int delay, double zaklocenia)
     : m_ui(std::deque<double>(vec_b.size() + delay, 0.0)), m_yi(std::deque<double>(vec_a.size(), 0.0)) {
     setVektory(vec_a, vec_b);

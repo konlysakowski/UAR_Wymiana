@@ -1,4 +1,5 @@
 #include "symulacja.h"
+#include <stdexcept>
 
 Symulacja::Symulacja(std::unique_ptr<ARX> arx, std::unique_ptr<PID> pid, std::unique_ptr<WartoscZadana> wartoscZadana, QObject* parent)
     :QObject(parent), m_ARX(std::move(arx)), m_PID(std::move(pid)), m_WartoscZadana(std::move(wartoscZadana)), m_zadane(0.0), m_zmierzone(0.0) {}
