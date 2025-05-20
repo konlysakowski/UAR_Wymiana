@@ -38,33 +38,46 @@ void NetworkServer::stopListening()
     m_server->close();
 }
 
-void NetworkServer::sendValue(double value)
+void NetworkServer::sendValue(float value)
 {
-    if (!m_clientSocket)
+    if (!m_clientSocket || m_clientSocket->state() != QAbstractSocket::ConnectedState)
         return;
 
-    QByteArray data;
-    QDataStream stream(&data, QIODevice::WriteOnly);
-    stream.setVersion(QDataStream::Qt_6_0);
-    stream << value;
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_6_0);
 
-    m_clientSocket->write(data);
+    out << quint32(sizeof(float));  // długość danych
+    out << value;                   // wartość typu float
+
+    m_clientSocket->write(block);
     m_clientSocket->flush();
+
+    qDebug() << "[SERVER] Odesłano y =" << value;
 }
 
 void NetworkServer::onReadyRead()
 {
-    if (!m_clientSocket)
-        return;
+    while (m_clientSocket->bytesAvailable() > 0) {
+        QDataStream in(m_clientSocket);
+        in.setVersion(QDataStream::Qt_6_0);
 
-    QDataStream stream(m_clientSocket);
-    stream.setVersion(QDataStream::Qt_6_0);
+        quint8 type;
+        quint32 length;
 
-    while (m_clientSocket->bytesAvailable() >= static_cast<int>(sizeof(double))) {
-        double u;
-        stream >> u;
-        qDebug() << "[ARX] Otrzymano sterowanie u =" << u;
-        emit sterowanieOdebrane(u);
+        if (m_clientSocket->bytesAvailable() < sizeof(type) + sizeof(length)) return;
+        in >> type;
+        in >> length;
+
+        if (type == 0x10 && length == sizeof(float)) {
+            if (m_clientSocket->bytesAvailable() < static_cast<int>(length)) return;
+            float u;
+            in >> u;
+            emit sterowanieOdebrane(u);
+        } else {
+            emit commandReceived(type);
+            return;
+        }
     }
 }
 

@@ -21,46 +21,10 @@ void Symulacja::setZadane(double zadane) {
 }
 
 double Symulacja::krok() {
-
-    if(!m_trybSieciowy)
-    {
-        qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
-        m_zadane = m_WartoscZadana->generuj();
-        double u = m_PID->oblicz(m_zadane, m_zmierzone);
-        m_zmierzone = m_ARX->krok(u);
-        return m_zmierzone;
-    }
-    else
-    {
-        qDebug() << "Symulacja::krok() wywołany. m_tryb =" << static_cast<int>(m_tryb);
-
-        if(m_tryb == TrybSymulacji::Regulator) {
-            qDebug() << "Symulacja::krok() - tryb" << static_cast<int>(m_tryb);
-            m_zadane = m_WartoscZadana->generuj();
-            qDebug() << "Poszedł za m_zadane";
-            double sygnalSterujacy = m_PID->oblicz(m_zadane, m_zmierzone);
-            qDebug() << "Sygnał sterujący obliczony";
-            if (m_Client && m_Client->isConnected()) {
-                m_Client->sendValue(sygnalSterujacy);
-                qDebug() << "Wartość wysłana";
-                double odpowiedz;
-                if (m_Client->receiveData(odpowiedz)) {
-                    qDebug() << "Odebrano wartość regulowaną:" << odpowiedz;
-                    m_zmierzone = odpowiedz;
-                    emit statusKomunikacji(true);
-                } else {
-                     qDebug() << "Nie odebrano danych.";
-                    emit statusKomunikacji(false);
-                }
-            } else {
-                emit statusKomunikacji(false);
-            }
-
-            return m_zmierzone;
-        }
-    }
-
-
+    m_zadane = m_WartoscZadana->generuj();
+    double u = m_PID->oblicz(m_zadane, m_zmierzone);
+    m_zmierzone = m_ARX->krok(u);
+    return m_zmierzone;
 }
 
 double Symulacja::krok_TiWSumie() {
@@ -93,4 +57,6 @@ double Symulacja::przetworzSterowanie(float u)
 {
     return m_ARX->krok(static_cast<double>(u));
 }
+
+
 

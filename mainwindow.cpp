@@ -198,9 +198,54 @@ void MainWindow::initSimulation() {
 
         if (m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX) {
             connect(m_server, &NetworkServer::sterowanieOdebrane, this, [this](float u) {
-                if (m_symulacja) {
-                    double y = m_symulacja->przetworzSterowanie(u);
-                    m_server->sendValue(y);
+                if (!m_symulacja)
+                    return;
+
+                qDebug() << "[ARX] Odebrano u =" << u;
+                double y = m_symulacja->przetworzSterowanie(u);
+
+                m_server->sendValue(static_cast<float>(y));
+                qDebug() << "[ARX] Odesłano y =" << y;
+
+                static int arx_time = 0;
+
+                zadanaPlot->graph(0)->addData(arx_time, static_cast<double>(u));
+                zadanaPlot->graph(1)->addData(arx_time, y);
+
+                uchybPlot->graph(0)->addData(arx_time, u - y);
+
+                if (arx_time > 100) {
+                    zadanaPlot->xAxis->setRange(arx_time - 100, arx_time);
+                    uchybPlot->xAxis->setRange(arx_time - 100, arx_time);
+                } else {
+                    zadanaPlot->xAxis->setRange(0, arx_time);
+                    uchybPlot->xAxis->setRange(0, arx_time);
+                }
+
+                zadanaPlot->yAxis->rescale();
+                uchybPlot->yAxis->rescale();
+
+                zadanaPlot->replot();
+                uchybPlot->replot();
+
+                arx_time++;
+            });
+
+            connect(m_server, &NetworkServer::commandReceived, this, [this](quint8 cmd) {
+                if (!m_symulacja) return;
+
+                switch (cmd) {
+                case 0x01:
+                    startSimulation();
+                    break;
+                case 0x02:
+                    stopSimulation();
+                    break;
+                case 0x03:
+                    resetSimulation();
+                    break;
+                default:
+                    break;
                 }
             });
         }
@@ -287,7 +332,9 @@ void MainWindow::setupPlots()
 void MainWindow::startSimulation() {
     if(m_time > 0)
     {
+        m_client->sendCommand(0x01);
         m_timer->start(this->ui->interwalSpinBox->value());
+
         return;
     }
 
@@ -297,7 +344,9 @@ void MainWindow::startSimulation() {
         }
 
         zoom(false);
+        m_client->sendCommand(0x01);
         m_timer->start(this->ui->interwalSpinBox->value());
+
     } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd", ex.what());
     }
@@ -305,6 +354,7 @@ void MainWindow::startSimulation() {
 }
 
 void MainWindow::stopSimulation() {
+    m_client->sendCommand(0x02);
     m_timer->stop();
     zoom(true);
 
@@ -312,6 +362,7 @@ void MainWindow::stopSimulation() {
 }
 
 void MainWindow::resetSimulation() {
+    m_client->sendCommand(0x03);
     resetclicked = true;
     ui->zadaneLabel->setText("0.00");
     ui->wyjscieLabel->setText("0.00");
@@ -322,6 +373,7 @@ void MainWindow::resetSimulation() {
     sterowaniePlot->replot();
     zadanaPlot->replot();
     uchybPlot->replot();
+
     initSimulation();
 }
 
@@ -368,30 +420,62 @@ void MainWindow::updateAllParams() {
 
 void MainWindow::updateSimulation() {
     try {
-        if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::Lokalny || m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator)
+        double setpoint = m_symulacja->getWartoscZadana()->generuj();
+        double measured = m_prevOutput;
+        double error = setpoint - measured;
+        double pComponent;
+        double iComponent;
+        double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
+
+
+
+        if(ui->liczenieCalkiLabel->isChecked() == true)
         {
-            double setpoint = m_symulacja->getWartoscZadana()->generuj();
-            double measured = m_prevOutput;
-            double error = setpoint - measured;
-            double pComponent;
-            double iComponent;
-            double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
+             pComponent = m_symulacja->getPID()->obliczP_TiWSumie(setpoint, measured);
+             iComponent = m_symulacja->getPID()->obliczI_TiWSumie(setpoint, measured);
+        }
+        else
+        {
+             pComponent = m_symulacja->getPID()->obliczP(setpoint, measured);
+             iComponent = m_symulacja->getPID()->obliczI();
+        }
 
-            if(ui->liczenieCalkiLabel->isChecked() == true)
+        m_symulacja->setZadane(setpoint);
+        double output;
+
+
+        if(ui->networkModeCheckBox->isChecked())
+        {
+            if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator)
             {
-                 pComponent = m_symulacja->getPID()->obliczP_TiWSumie(setpoint, measured);
-                 iComponent = m_symulacja->getPID()->obliczI_TiWSumie(setpoint, measured);
+                setpoint = m_symulacja->getWartoscZadana()->generuj();
+                output = m_symulacja->krok();
+
+                if (m_client && m_client->isConnected())
+                {
+                    m_client->sendValue(static_cast<float>(output));
+
+                    float yOdebrane = 0.0;
+                    if (m_client->receiveData(yOdebrane)) {
+                        measured = yOdebrane;
+                        emit m_symulacja->statusKomunikacji(true);
+                    } else {
+                        emit m_symulacja->statusKomunikacji(false);
+                        measured = m_prevOutput;
+                    }
+                }
+
+                m_prevSetpoint = setpoint;
+                m_prevOutput = measured;
+
             }
-            else
+            else if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX)
             {
-                 pComponent = m_symulacja->getPID()->obliczP(setpoint, measured);
-                 iComponent = m_symulacja->getPID()->obliczI();
+                return;
             }
-
-
-
-            m_symulacja->setZadane(setpoint);
-            double output;
+        }
+        else
+        {
             if(ui->liczenieCalkiLabel->isChecked() == true)
             {
                 output = m_symulacja->krok_TiWSumie();
@@ -400,42 +484,42 @@ void MainWindow::updateSimulation() {
             {
                 output = m_symulacja->krok();
             }
+        }
+
+        ui->zadaneLabel->setText(QString::number(setpoint, 'f', 2));
+        ui->wyjscieLabel->setText(QString::number(output, 'f', 2));
 
 
-            ui->zadaneLabel->setText(QString::number(setpoint, 'f', 2));
-            ui->wyjscieLabel->setText(QString::number(output, 'f', 2));
 
+        if (m_time > 0) {
+            m_x = m_time;
+            zadanaPlot->graph(0)->addData(m_time-1,setpoint);
+            zadanaPlot->graph(1)->addData(m_time-1,measured);
+            sterowaniePlot->graph(0)->addData(m_time-1,pComponent);
+            sterowaniePlot->graph(1)->addData(m_time-1,iComponent);
+            sterowaniePlot->graph(2)->addData(m_time-1,dComponent);
+            if(ui->liczenieCalkiLabel->isChecked() == true)
+            {
+                sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz_TiWSumie(setpoint,measured));
+            }
+            else
+            {
+                sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz(setpoint,measured));
+            }
 
-
-            if (m_time > 0) {
-                m_x = m_time;
-                zadanaPlot->graph(0)->addData(m_time-1,setpoint);
-                zadanaPlot->graph(1)->addData(m_time-1,measured);
-                sterowaniePlot->graph(0)->addData(m_time-1,pComponent);
-                sterowaniePlot->graph(1)->addData(m_time-1,iComponent);
-                sterowaniePlot->graph(2)->addData(m_time-1,dComponent);
-                if(ui->liczenieCalkiLabel->isChecked() == true)
-                {
-                    sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz_TiWSumie(setpoint,measured));
-                }
-                else
-                {
-                    sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz(setpoint,measured));
-                }
-
-                uchybPlot->graph(0)->addData(m_time-1, error);
-                if(m_x > 100)
-                {
-                    zadanaPlot->xAxis->setRange((m_x-100), m_x);
-                    sterowaniePlot->xAxis->setRange((m_x-100), m_x);
-                    uchybPlot->xAxis->setRange((m_x-100), m_x);
-                }
-                else
-                {
-                    zadanaPlot->xAxis->setRange(0, m_x);
-                    sterowaniePlot->xAxis->setRange(0, m_x);
-                    uchybPlot->xAxis->setRange(0, m_x);
-                }
+            uchybPlot->graph(0)->addData(m_time-1, error);
+            if(m_x > 100)
+            {
+                zadanaPlot->xAxis->setRange((m_x-100), m_x);
+                sterowaniePlot->xAxis->setRange((m_x-100), m_x);
+                uchybPlot->xAxis->setRange((m_x-100), m_x);
+            }
+            else
+            {
+                zadanaPlot->xAxis->setRange(0, m_x);
+                sterowaniePlot->xAxis->setRange(0, m_x);
+                uchybPlot->xAxis->setRange(0, m_x);
+            }
                 sterowaniePlot->yAxis->rescale();
                 zadanaPlot->yAxis->rescale();
                 uchybPlot->yAxis->rescale();
@@ -447,7 +531,7 @@ void MainWindow::updateSimulation() {
             m_prevOutput = output;
             m_prevSetpoint = setpoint;
 
-        }
+
     } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd symulacji", ex.what());
         stopSimulation();

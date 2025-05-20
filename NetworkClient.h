@@ -13,8 +13,10 @@ public:
     void connectToServer(const QString &host, quint16 port);
     bool isConnected() const;
     void disconnectFromHost();
-    void sendValue(double value);
-    bool receiveData(double &value);
+    void sendValue(float value);
+    bool receiveData(float &value);
+    void sendCommand(quint8 type);
+
 
 signals:
     void connected();

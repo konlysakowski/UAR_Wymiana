@@ -36,6 +36,7 @@ public:
     void ustawTryb(TrybSymulacji tryb) { m_tryb = tryb; }
     TrybSymulacji getTryb() {return m_tryb;}
 
+
 protected:
         std::unique_ptr<ARX> m_ARX;
         std::unique_ptr<PID> m_PID;
