@@ -173,7 +173,6 @@ void MainWindow::initSimulation() {
         m_symulacja = nullptr;
     } else {
         m_symulacja = std::make_unique<Symulacja>(std::move(arx), std::move(pid), std::move(wartoscZadana));
-        connect(m_symulacja.get(), &Symulacja::statusKomunikacji, this, &MainWindow::ustawStatusKomunikacji);
 
         if(ui->networkModeCheckBox->isChecked())
         {
@@ -196,58 +195,43 @@ void MainWindow::initSimulation() {
             m_symulacja->ustawTryb(Symulacja::TrybSymulacji::Lokalny);
         }
 
-        if (m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX) {
-            connect(m_server, &NetworkServer::sterowanieOdebrane, this, [this](float u) {
-                if (!m_symulacja)
-                    return;
+        if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX)
+        {
+                connect(m_client, &NetworkClient::wartoscRegulowanaOdebrana, this, [this](float y) {
+                    m_prevOutput = y;
+                    qDebug() << "[MainWindow] Otrzymano y =" << y;
+                });
 
-                qDebug() << "[ARX] Odebrano u =" << u;
-                double y = m_symulacja->przetworzSterowanie(u);
+                connect(m_client, &NetworkClient::commandReceived, this, [this](int cmd) {
+                    if (cmd == 0) startSimulation();
+                    else if (cmd == 1) stopSimulation();
+                    else if (cmd == 2) resetSimulation();
+                });
 
-                m_server->sendValue(static_cast<float>(y));
-                qDebug() << "[ARX] Odesłano y =" << y;
-
-                static int arx_time = 0;
-
-                zadanaPlot->graph(0)->addData(arx_time, static_cast<double>(u));
-                zadanaPlot->graph(1)->addData(arx_time, y);
-
-                uchybPlot->graph(0)->addData(arx_time, u - y);
-
-                if (arx_time > 100) {
-                    zadanaPlot->xAxis->setRange(arx_time - 100, arx_time);
-                    uchybPlot->xAxis->setRange(arx_time - 100, arx_time);
-                } else {
-                    zadanaPlot->xAxis->setRange(0, arx_time);
-                    uchybPlot->xAxis->setRange(0, arx_time);
-                }
-
-                zadanaPlot->yAxis->rescale();
-                uchybPlot->yAxis->rescale();
-
-                zadanaPlot->replot();
-                uchybPlot->replot();
-
-                arx_time++;
-            });
-
-            connect(m_server, &NetworkServer::commandReceived, this, [this](quint8 cmd) {
-                if (!m_symulacja) return;
-
-                switch (cmd) {
-                case 0x01:
-                    startSimulation();
-                    break;
-                case 0x02:
-                    stopSimulation();
-                    break;
-                case 0x03:
-                    resetSimulation();
-                    break;
-                default:
-                    break;
-                }
-            });
+                connect(m_client, &NetworkClient::paramKpOdebrany, this, [this](float v) {
+                    ui->kpLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::paramTiOdebrany, this, [this](float v) {
+                    ui->tiLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::paramTdOdebrany, this, [this](float v) {
+                    ui->tdLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::amplitudaOdebrana, this, [this](float v) {
+                    ui->amplitudaLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::okresOdebrany, this, [this](int v) {
+                    ui->okresLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::wypelnienieOdebrane, this, [this](float v) {
+                    ui->cyklLabel->setValue(v);
+                });
+                connect(m_client, &NetworkClient::typSygnaluOdebrany, this, [this](int v) {
+                    ui->sygnalcomboBox->setCurrentIndex(v);
+                });
+                connect(m_client, &NetworkClient::stalaOdebrana, this, [this](int v) {
+                    ui->delayLabel->setText(QString::number(v));
+                });
         }
 
         m_symulacja->setClient(m_client);
@@ -332,9 +316,7 @@ void MainWindow::setupPlots()
 void MainWindow::startSimulation() {
     if(m_time > 0)
     {
-        m_client->sendCommand(0x01);
         m_timer->start(this->ui->interwalSpinBox->value());
-
         return;
     }
 
@@ -343,9 +325,15 @@ void MainWindow::startSimulation() {
             throw std::logic_error("Symulacja nie została poprawnie zainicjalizowana.");
         }
 
+        initSimulation();
         zoom(false);
-        m_client->sendCommand(0x01);
         m_timer->start(this->ui->interwalSpinBox->value());
+
+        if (ui->networkModeCheckBox->isChecked() &&
+            ui->RoleComboBox->currentText() == "Regulator")
+        {
+            wyslijWszystkieParametry();
+        }
 
     } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd", ex.what());
@@ -354,15 +342,17 @@ void MainWindow::startSimulation() {
 }
 
 void MainWindow::stopSimulation() {
-    m_client->sendCommand(0x02);
     m_timer->stop();
     zoom(true);
-
+    if(ui->networkModeCheckBox->isChecked() && m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator
+        && m_client && m_client->isConnected())
+    {
+        m_client->sendCommand(0x02);
+    }
 
 }
 
 void MainWindow::resetSimulation() {
-    m_client->sendCommand(0x03);
     resetclicked = true;
     ui->zadaneLabel->setText("0.00");
     ui->wyjscieLabel->setText("0.00");
@@ -375,6 +365,11 @@ void MainWindow::resetSimulation() {
     uchybPlot->replot();
 
     initSimulation();
+    if(ui->networkModeCheckBox->isChecked() && m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator
+        && m_client && m_client->isConnected())
+    {
+        m_client->sendCommand(0x03);
+    }
 }
 
 void MainWindow::updateAllParams() {
@@ -441,7 +436,7 @@ void MainWindow::updateSimulation() {
         }
 
         m_symulacja->setZadane(setpoint);
-        double output;
+        double output = 0.0;
 
 
         if(ui->networkModeCheckBox->isChecked())
@@ -453,8 +448,7 @@ void MainWindow::updateSimulation() {
 
                 if (m_client && m_client->isConnected())
                 {
-                    m_client->sendValue(static_cast<float>(output));
-
+                    m_client->sendMessage(0.0f, output);
                     float yOdebrane = 0.0;
                     if (m_client->receiveData(yOdebrane)) {
                         measured = yOdebrane;
@@ -471,7 +465,8 @@ void MainWindow::updateSimulation() {
             }
             else if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX)
             {
-                return;
+
+
             }
         }
         else
@@ -653,15 +648,22 @@ void MainWindow::aktualizujStatusPolaczenia(bool connected)
     }
 }
 
-void MainWindow::ustawStatusKomunikacji(bool ok)
+void MainWindow::wyslijWszystkieParametry()
 {
-    if (ok) {
-        ui->wymianaDanychLabel->setText("Wymiana danych");
-        ui->wymianaDanychLabel->setStyleSheet("QLabel { color: green; font-weight: bold; }");
-    } else {
-        ui->wymianaDanychLabel->setText("Brak wymiany");
-        ui->wymianaDanychLabel->setStyleSheet("QLabel { color: red; font-weight: bold; }");
-    }
+    if (!m_client || !m_client->isConnected())
+        return;
+
+    // PID
+    m_client->sendMessage(2.0f, ui->kpLabel->value());                           // Kp
+    m_client->sendMessage(3.0f, ui->tiLabel->value());                           // Ti
+    m_client->sendMessage(4.0f, ui->tdLabel->value());                           // Td
+
+    // Sygnał zadany
+    m_client->sendMessage(5.0f, static_cast<float>(ui->sygnalcomboBox->currentIndex())); // Typ sygnału
+    m_client->sendMessage(6.0f, ui->amplitudaLabel->value());                  // Amplituda
+    m_client->sendMessage(7.0f, static_cast<float>(ui->okresLabel->value()));  // Okres
+    m_client->sendMessage(8.0f, ui->delayLabel->text().toFloat());            // Opóźnienie
+    m_client->sendMessage(9.0f, ui->cyklLabel->value());                      // Wypełnienie
 }
 
 

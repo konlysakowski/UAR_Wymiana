@@ -4,6 +4,7 @@
 #include <QTcpSocket>
 #include <QString>
 #include <QHostAddress>
+#include <QDataStream>
 
 class NetworkClient : public QObject {
     Q_OBJECT
@@ -16,12 +17,24 @@ public:
     void sendValue(float value);
     bool receiveData(float &value);
     void sendCommand(quint8 type);
+    void sendMessage(float typ, float wartosc);
+    void onReadyRead();
 
 
 signals:
     void connected();
     void disconnected();
     void valueReceived(double value);
+    void wartoscRegulowanaOdebrana(float wartosc);
+    void paramKpOdebrany(float wartosc);
+    void paramTiOdebrany(float wartosc);
+    void paramTdOdebrany(float wartosc);
+    void typSygnaluOdebrany(int);
+    void amplitudaOdebrana(float wartosc);
+    void okresOdebrany(int);
+    void stalaOdebrana(int);
+    void wypelnienieOdebrane(float wartosc);
+    void commandReceived(int);
 
 private slots:
     void onConnected();

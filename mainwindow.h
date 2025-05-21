@@ -68,5 +68,5 @@ private:
     NetworkClient *m_client;
     NetworkServer *m_server;
     void blokujGUIWDanymTrybie(bool sieciowy);
-    void ustawStatusKomunikacji(bool ok);
+    void wyslijWszystkieParametry();
 };
