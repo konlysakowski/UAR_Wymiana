@@ -41,6 +41,7 @@ private:
     Ui::MainWindow *ui;
 
     std::unique_ptr<Symulacja> m_symulacja;
+    std::unique_ptr<ARX> m_arx;
 
     QTimer *m_timer;
     QCustomPlot * sterowaniePlot;
@@ -68,5 +69,9 @@ private:
     NetworkClient *m_client;
     NetworkServer *m_server;
     void blokujGUIWDanymTrybie(bool sieciowy);
+    void onReadyRead();
+    void sendCommand(QString);
+    void sendValue(float t, double v);
+    double receiveValue();
 
 };

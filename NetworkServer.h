@@ -16,6 +16,8 @@ public:
     void startListening(quint16 port);
     bool isClientConnected() const;
     void stopListening();
+    QTcpSocket* clientSocket() const { return m_clientSocket; }
+    QTcpServer* serever() const {return m_server;}
 
 signals:
     void clientConnected();

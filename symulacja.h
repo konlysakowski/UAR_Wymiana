@@ -24,10 +24,11 @@ public:
             m_ARX->updateParamsWithoutReset(vec_a, vec_b, delay, zaklocenia);
         }
     }
-
+    void setZmierzone(double);
+    void setSterowanie(double);
 protected:
         std::unique_ptr<ARX> m_ARX;
         std::unique_ptr<PID> m_PID;
         std::unique_ptr<WartoscZadana> m_WartoscZadana;
-        double m_zadane, m_zmierzone;
+        double m_zadane, m_zmierzone, m_u;
     };

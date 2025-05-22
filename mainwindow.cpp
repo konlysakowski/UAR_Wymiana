@@ -38,8 +38,15 @@ MainWindow::MainWindow(QWidget *parent)
     this->ui->cyklLabel->setValue(0.5);
     this->ui->aktywacjaLabel->setValue(1);
 
+
     connect(m_client, &NetworkClient::connected, this, [this]() {
         aktualizujStatusPolaczenia(true);
+
+        QTcpSocket* socket = m_client->socket();
+        if (socket)
+        {
+            connect(socket, &QTcpSocket::readyRead, this, &MainWindow::onReadyRead);
+        }
     });
 
     connect(m_client, &NetworkClient::disconnected, this, [this]() {
@@ -48,10 +55,33 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_server, &NetworkServer::clientConnected, this, [this]() {
         aktualizujStatusPolaczenia(true);
+
+        QTcpSocket* socket = m_server->clientSocket();
+        if (socket)
+        {
+            connect(socket, &QTcpSocket::readyRead, this, &MainWindow::onReadyRead);
+        }
     });
 
     connect(m_server, &NetworkServer::clientDisconnected, this, [this]() {
         aktualizujStatusPolaczenia(false);
+    });
+
+
+
+    connect(ui->startButton, &QPushButton::clicked, this, [=]() {
+        if(m_client && m_client->isConnected())
+            sendCommand("start");
+    });
+
+    connect(ui->stopButton, &QPushButton::clicked, this, [=]() {
+        if(m_client && m_client->isConnected())
+            sendCommand("stop");
+    });
+
+    connect(ui->resetButton, &QPushButton::clicked, this, [=]() {
+        if(m_client && m_client->isConnected())
+            sendCommand("reset");
     });
 
     initSimulation();
@@ -68,8 +98,6 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         updateAllParams();
     }
 }
-
-
 
 
 std::unique_ptr<ARX> MainWindow::updateARXParams()
@@ -127,6 +155,13 @@ std::unique_ptr<PID> MainWindow::updatePIDParams()
     double td = ui->tdLabel->value();
 
     return std::make_unique<PID>(kp, ti, td);
+
+    if(m_client != nullptr)
+    {
+        sendValue(0x10, kp);
+        sendValue(0x11, ti);
+        sendValue(0x12, td);
+    }
 }
 
 
@@ -145,12 +180,31 @@ std::unique_ptr<WartoscZadana> MainWindow::updateSignalParams()
     switch (type) {
     case skok:
         wartoscZadana->ustawskok(amplitude, activationTime);
+        if(m_client != nullptr)
+        {
+            sendValue(0x20, 0);
+            sendValue(0x21, amplitude);
+            sendValue(0x24, activationTime);
+        }
         break;
     case sinusoida:
         wartoscZadana->ustawsinusoide(amplitude, period);
+        if(m_client != nullptr)
+        {
+            sendValue(0x20, 1);
+            sendValue(0x21, amplitude);
+            sendValue(0x23, period);
+        }
         break;
     case prostokatny:
         wartoscZadana->ustawprostokatny(amplitude, period, dutyCycle);
+        if(m_client != nullptr)
+        {
+            sendValue(0x20, 2);
+            sendValue(0x21, amplitude);
+            sendValue(0x23, period);
+            sendValue(0x22, dutyCycle);
+        }
         break;
     default:
         //QMessageBox::warning(this, "Błąd danych", "Nieznany typ sygnału.");
@@ -176,10 +230,10 @@ void MainWindow::initSimulation() {
         m_symulacja = std::make_unique<Symulacja>(std::move(arx), std::move(pid), std::move(wartoscZadana));
     }
 
+    setupPlots();
+
     if(resetclicked)
     {
-
-        setupPlots();
         resetclicked = false;
     }
 }
@@ -259,7 +313,7 @@ void MainWindow::startSimulation() {
             throw std::logic_error("Symulacja nie została poprawnie zainicjalizowana.");
         }
 
-        initSimulation();
+
         zoom(false);
         m_timer->start(this->ui->interwalSpinBox->value());
 
@@ -338,17 +392,27 @@ void MainWindow::updateSimulation() {
         double pComponent;
         double iComponent;
         double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
+        double sterowanie;
+
+        if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Model ARX")
+            sendValue(0x01, measured);
 
         if(ui->liczenieCalkiLabel->isChecked() == true)
         {
              pComponent = m_symulacja->getPID()->obliczP_TiWSumie(setpoint, measured);
              iComponent = m_symulacja->getPID()->obliczI_TiWSumie(setpoint, measured);
+             sterowanie = m_symulacja->getPID()->oblicz_TiWSumie(setpoint, measured);
         }
         else
         {
              pComponent = m_symulacja->getPID()->obliczP(setpoint, measured);
              iComponent = m_symulacja->getPID()->obliczI();
+             sterowanie = m_symulacja->getPID()->oblicz(setpoint, measured);
         }
+
+        if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Regulator")
+            sendValue(0x02, sterowanie);
+
 
         m_symulacja->setZadane(setpoint);
         double output = 0.0;
@@ -364,8 +428,6 @@ void MainWindow::updateSimulation() {
 
         ui->zadaneLabel->setText(QString::number(setpoint, 'f', 2));
         ui->wyjscieLabel->setText(QString::number(output, 'f', 2));
-
-
 
         if (m_time > 0) {
             m_x = m_time;
@@ -529,6 +591,125 @@ void MainWindow::aktualizujStatusPolaczenia(bool connected)
 }
 
 
+void MainWindow::onReadyRead()
+{
+    QTcpSocket *socket = qobject_cast<QTcpSocket*>(sender());
+    if (!socket || !socket->isOpen()) {
+        qDebug() << "onReadyRead: brak socketu lub socket nie jest otwarty";
+        return;
+    }
+
+    static QByteArray bufor;
+
+    bufor = bufor + socket->readAll();
+
+    while(bufor.size() >= 9)
+    {
+        quint8 type = static_cast<quint8>(bufor[0]);
+        double value;
+        memcpy(&value, bufor.constData() + 1, sizeof(double));
+        bufor.remove(0, 9);
+
+        qDebug() << "Odebrano: " << type << " " << value;
 
 
+        switch (static_cast<int>(type)) {
+        case 0x00: { //komenda start/stop/reset
+            int command = static_cast<int>(value);
+            if(command == 0)
+                startSimulation();
+            else if(command == 1)
+                stopSimulation();
+            else if(command == 2)
+                resetSimulation();
+            else
+                qDebug() << "Błąd! Nie ma takiej komendy";
+
+            break;
+        }
+        case 0x01:  //wartosc regulowana
+            qDebug() << "Wartość regulowana (W):" << value;
+            m_symulacja->setZmierzone(value);
+            break;
+        case 0x02: //sterowanie PID
+            qDebug() << "Sterowanie (S):" << value;
+            m_symulacja->setSterowanie(value);
+           // m_arx->krok(value);
+            break;
+        case 0x10: //kp
+            qDebug() << "Kp:" << value;
+            ui->kpLabel->setValue(value);
+            break;
+        case 0x11: //ti
+            qDebug() << "Ti:" << value;
+            ui->tiLabel->setValue(value);
+            break;
+        case 0x12: //td
+            qDebug() << "Td:" << value;
+            ui->tdLabel->setValue(value);
+            break;
+        case 0x20: //typ sygnalu
+            qDebug() << "Typ sygnału:" << value;
+            ui->sygnalcomboBox->setCurrentIndex(static_cast<int>(value));
+            break;
+        case 0x21: //amplituda
+            qDebug() << "Amplituda:" << value;
+            ui->amplitudaLabel->setValue(value);
+            break;
+        case 0x22: //cykl
+            qDebug() << "Cykl:" << value;
+            ui->cyklLabel->setValue(value);
+            break;
+        case 0x23: //okres
+            qDebug() << "Okres:" << value;
+            ui->okresLabel->setValue(value);
+            break;
+        case 0x24: //czas aktywacji
+            qDebug() << "Czas aktywacji:" << value;
+            ui->aktywacjaLabel->setValue(value);
+            break;
+        default:
+            qDebug() << "Nieznany typ wiadomości:" << type;
+            break;
+        }
+
+    }
+}
+
+void MainWindow::sendValue(float type, double value)
+{
+    QByteArray msg;
+
+    char buf[sizeof(double)];
+    memcpy(buf, &value, sizeof(double));
+
+    msg.append(type);
+    msg.append(buf, sizeof(double));
+
+    m_client->socket()->write(msg);
+    m_client->socket()->flush();
+
+}
+
+void MainWindow::sendCommand(QString cmd)
+{
+    if(cmd == "start")
+        sendValue(0x00, 0);
+    else if(cmd == "stop")
+        sendValue(0x00, 1);
+    else if(cmd == "reset")
+        sendValue(0x00, 2);
+}
+
+double MainWindow::receiveValue()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+
+    if (!socket || !socket->bytesAvailable())
+        return 0;
+
+
+    return socket->readAll().toDouble();
+
+}
 

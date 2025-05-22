@@ -23,8 +23,8 @@ void Symulacja::setZadane(double zadane) {
 
 double Symulacja::krok() {
     m_zadane = m_WartoscZadana->generuj();
-    double u = m_PID->oblicz(m_zadane, m_zmierzone);
-    m_zmierzone = m_ARX->krok(u);
+    m_u = m_PID->oblicz(m_zadane, m_zmierzone);
+    m_zmierzone = m_ARX->krok(m_u);
     return m_zmierzone;
 }
 
@@ -54,4 +54,12 @@ void Symulacja::aktualizujParametryARX(const std::vector<double>& vec_a, const s
     }
 }
 
+void Symulacja::setZmierzone(double zmierzone)
+{
+    m_zmierzone = zmierzone;
+}
 
+void Symulacja::setSterowanie(double sterowanie)
+{
+    m_u = sterowanie;
+}

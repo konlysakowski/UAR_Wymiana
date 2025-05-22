@@ -14,7 +14,7 @@ public:
     void connectToServer(const QString &host, quint16 port);
     bool isConnected() const;
     void disconnectFromHost();
-
+    QTcpSocket* socket() const { return m_socket; }
 signals:
     void connected();
     void disconnected();
@@ -25,7 +25,6 @@ private slots:
 
 private:
     QTcpSocket *m_socket;
-
 };
 
 
