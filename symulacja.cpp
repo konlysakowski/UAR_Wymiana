@@ -54,10 +54,4 @@ void Symulacja::aktualizujParametryARX(const std::vector<double>& vec_a, const s
     }
 }
 
-double Symulacja::przetworzSterowanie(float u)
-{
-    return m_ARX->krok(static_cast<double>(u));
-}
-
-
 

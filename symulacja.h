@@ -1,8 +1,6 @@
 #include "pid.h"
 #include "arx.h"
 #include "wartosc_zadana.h"
-#include "NetworkClient.h"
-#include "NetworkServer.h"
 #include <QObject>
 
 class Symulacja : public QObject {
@@ -27,28 +25,9 @@ public:
         }
     }
 
-    enum class TrybSymulacji { Regulator, ModelARX, Lokalny };
-    void ustawStatusKomunikacji(bool ok);
-    void ustawTrybSieciowy(bool sieciowy) { m_trybSieciowy = sieciowy; }
-    void setClient(NetworkClient *client) { m_Client = client; }
-    void setServer(NetworkServer *server) { m_Server = server; }
-    double przetworzSterowanie(float u);
-    void ustawTryb(TrybSymulacji tryb) { m_tryb = tryb; }
-    TrybSymulacji getTryb() {return m_tryb;}
-
-
 protected:
         std::unique_ptr<ARX> m_ARX;
         std::unique_ptr<PID> m_PID;
         std::unique_ptr<WartoscZadana> m_WartoscZadana;
         double m_zadane, m_zmierzone;
-        NetworkClient* m_Client;
-        NetworkServer* m_Server;
-        bool m_trybSieciowy = false;
-        TrybSymulacji m_tryb;
-
-
-signals:
-        void statusKomunikacji(bool ok);
-    
     };

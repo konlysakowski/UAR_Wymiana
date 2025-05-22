@@ -55,6 +55,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     initSimulation();
+
 }
 
 
@@ -173,74 +174,7 @@ void MainWindow::initSimulation() {
         m_symulacja = nullptr;
     } else {
         m_symulacja = std::make_unique<Symulacja>(std::move(arx), std::move(pid), std::move(wartoscZadana));
-
-        if(ui->networkModeCheckBox->isChecked())
-        {
-            m_symulacja->ustawTrybSieciowy(true);
-
-            if(ui->RoleComboBox->currentText() == "Regulator")
-            {
-                m_symulacja->ustawTryb(Symulacja::TrybSymulacji::Regulator);
-            }
-            else if(ui->RoleComboBox->currentText() == "Model ARX")
-            {
-                m_symulacja->ustawTryb(Symulacja::TrybSymulacji::ModelARX);
-            }
-            qDebug() << "Wybrana rola:" << ui->RoleComboBox->currentText();
-
-        }
-        else
-        {
-            m_symulacja->ustawTrybSieciowy(false);
-            m_symulacja->ustawTryb(Symulacja::TrybSymulacji::Lokalny);
-        }
-
-        if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX)
-        {
-                connect(m_client, &NetworkClient::wartoscRegulowanaOdebrana, this, [this](float y) {
-                    m_prevOutput = y;
-                    qDebug() << "[MainWindow] Otrzymano y =" << y;
-                });
-
-                connect(m_client, &NetworkClient::commandReceived, this, [this](int cmd) {
-                    if (cmd == 0) startSimulation();
-                    else if (cmd == 1) stopSimulation();
-                    else if (cmd == 2) resetSimulation();
-                });
-
-                connect(m_client, &NetworkClient::paramKpOdebrany, this, [this](float v) {
-                    ui->kpLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::paramTiOdebrany, this, [this](float v) {
-                    ui->tiLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::paramTdOdebrany, this, [this](float v) {
-                    ui->tdLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::amplitudaOdebrana, this, [this](float v) {
-                    ui->amplitudaLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::okresOdebrany, this, [this](int v) {
-                    ui->okresLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::wypelnienieOdebrane, this, [this](float v) {
-                    ui->cyklLabel->setValue(v);
-                });
-                connect(m_client, &NetworkClient::typSygnaluOdebrany, this, [this](int v) {
-                    ui->sygnalcomboBox->setCurrentIndex(v);
-                });
-                connect(m_client, &NetworkClient::stalaOdebrana, this, [this](int v) {
-                    ui->delayLabel->setText(QString::number(v));
-                });
-        }
-
-        m_symulacja->setClient(m_client);
-        m_symulacja->setServer(m_server);
     }
-
-    m_time = 0;
-    m_prevSetpoint = 0.0;
-    m_prevOutput = 0.0;
 
     if(resetclicked)
     {
@@ -329,12 +263,6 @@ void MainWindow::startSimulation() {
         zoom(false);
         m_timer->start(this->ui->interwalSpinBox->value());
 
-        if (ui->networkModeCheckBox->isChecked() &&
-            ui->RoleComboBox->currentText() == "Regulator")
-        {
-            wyslijWszystkieParametry();
-        }
-
     } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd", ex.what());
     }
@@ -344,12 +272,6 @@ void MainWindow::startSimulation() {
 void MainWindow::stopSimulation() {
     m_timer->stop();
     zoom(true);
-    if(ui->networkModeCheckBox->isChecked() && m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator
-        && m_client && m_client->isConnected())
-    {
-        m_client->sendCommand(0x02);
-    }
-
 }
 
 void MainWindow::resetSimulation() {
@@ -363,13 +285,8 @@ void MainWindow::resetSimulation() {
     sterowaniePlot->replot();
     zadanaPlot->replot();
     uchybPlot->replot();
-
     initSimulation();
-    if(ui->networkModeCheckBox->isChecked() && m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator
-        && m_client && m_client->isConnected())
-    {
-        m_client->sendCommand(0x03);
-    }
+    m_time = 0;
 }
 
 void MainWindow::updateAllParams() {
@@ -422,8 +339,6 @@ void MainWindow::updateSimulation() {
         double iComponent;
         double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
 
-
-
         if(ui->liczenieCalkiLabel->isChecked() == true)
         {
              pComponent = m_symulacja->getPID()->obliczP_TiWSumie(setpoint, measured);
@@ -438,47 +353,13 @@ void MainWindow::updateSimulation() {
         m_symulacja->setZadane(setpoint);
         double output = 0.0;
 
-
-        if(ui->networkModeCheckBox->isChecked())
+        if(ui->liczenieCalkiLabel->isChecked() == true)
         {
-            if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::Regulator)
-            {
-                setpoint = m_symulacja->getWartoscZadana()->generuj();
-                output = m_symulacja->krok();
-
-                if (m_client && m_client->isConnected())
-                {
-                    m_client->sendMessage(0.0f, output);
-                    float yOdebrane = 0.0;
-                    if (m_client->receiveData(yOdebrane)) {
-                        measured = yOdebrane;
-                        emit m_symulacja->statusKomunikacji(true);
-                    } else {
-                        emit m_symulacja->statusKomunikacji(false);
-                        measured = m_prevOutput;
-                    }
-                }
-
-                m_prevSetpoint = setpoint;
-                m_prevOutput = measured;
-
-            }
-            else if(m_symulacja->getTryb() == Symulacja::TrybSymulacji::ModelARX)
-            {
-
-
-            }
+            output = m_symulacja->krok_TiWSumie();
         }
         else
         {
-            if(ui->liczenieCalkiLabel->isChecked() == true)
-            {
-                output = m_symulacja->krok_TiWSumie();
-            }
-            else
-            {
-                output = m_symulacja->krok();
-            }
+            output = m_symulacja->krok();
         }
 
         ui->zadaneLabel->setText(QString::number(setpoint, 'f', 2));
@@ -575,7 +456,6 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
     bool sieciowy = state == Qt::Checked;
     QString rola = ui->RoleComboBox->currentText();
     QString ip = ui->ipLineEdit->text();
-    m_symulacja->ustawTrybSieciowy(sieciowy);
 
     if (sieciowy)
     {
@@ -648,23 +528,7 @@ void MainWindow::aktualizujStatusPolaczenia(bool connected)
     }
 }
 
-void MainWindow::wyslijWszystkieParametry()
-{
-    if (!m_client || !m_client->isConnected())
-        return;
 
-    // PID
-    m_client->sendMessage(2.0f, ui->kpLabel->value());                           // Kp
-    m_client->sendMessage(3.0f, ui->tiLabel->value());                           // Ti
-    m_client->sendMessage(4.0f, ui->tdLabel->value());                           // Td
-
-    // Sygnał zadany
-    m_client->sendMessage(5.0f, static_cast<float>(ui->sygnalcomboBox->currentIndex())); // Typ sygnału
-    m_client->sendMessage(6.0f, ui->amplitudaLabel->value());                  // Amplituda
-    m_client->sendMessage(7.0f, static_cast<float>(ui->okresLabel->value()));  // Okres
-    m_client->sendMessage(8.0f, ui->delayLabel->text().toFloat());            // Opóźnienie
-    m_client->sendMessage(9.0f, ui->cyklLabel->value());                      // Wypełnienie
-}
 
 
 
