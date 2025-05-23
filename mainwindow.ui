@@ -170,6 +170,27 @@
        </widget>
       </item>
       <item>
+       <widget class="QComboBox" name="trybTaktowaniacomboBox">
+        <item>
+         <property name="text">
+          <string>Jednostronne</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Obustronne</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="syncStatusLabel">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QLabel" name="connectionStatusLabel">
         <property name="autoFillBackground">
          <bool>false</bool>

@@ -19,12 +19,14 @@ bool NetworkClient::isConnected() const
 
 void NetworkClient::onConnected()
 {
-    emit connected();
+    QString adres = m_socket->peerAddress().toString();
+    emit connected(adres);
 }
 
 void NetworkClient::onDisconnected()
 {
-    emit disconnected();
+    QString adres = m_socket->peerAddress().toString();
+    emit disconnected(adres);
 }
 
 void NetworkClient::disconnectFromHost()

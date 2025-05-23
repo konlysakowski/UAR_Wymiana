@@ -16,8 +16,8 @@ public:
     void disconnectFromHost();
     QTcpSocket* socket() const { return m_socket; }
 signals:
-    void connected();
-    void disconnected();
+    void connected(const QString&);
+    void disconnected(const QString&);
 
 private slots:
     void onConnected();

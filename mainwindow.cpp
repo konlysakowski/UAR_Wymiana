@@ -1,4 +1,4 @@
- #include "mainwindow.h"
+#include "mainwindow.h"
 #include "dialog.h"
 #include "ui_mainwindow.h"
 #include <QMessageBox>
@@ -39,8 +39,8 @@ MainWindow::MainWindow(QWidget *parent)
     this->ui->aktywacjaLabel->setValue(1);
 
 
-    connect(m_client, &NetworkClient::connected, this, [this]() {
-        aktualizujStatusPolaczenia(true);
+    connect(m_client, &NetworkClient::connected, this, [this](const QString& ip) {
+        aktualizujStatusPolaczenia(true, ip);
 
         QTcpSocket* socket = m_client->socket();
         if (socket)
@@ -49,12 +49,12 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    connect(m_client, &NetworkClient::disconnected, this, [this]() {
-        aktualizujStatusPolaczenia(false);
+    connect(m_client, &NetworkClient::disconnected, this, [this](const QString& ip) {
+        aktualizujStatusPolaczenia(false, ip);
     });
 
-    connect(m_server, &NetworkServer::clientConnected, this, [this]() {
-        aktualizujStatusPolaczenia(true);
+    connect(m_server, &NetworkServer::clientConnected, this, [this](const QString& ip) {
+        aktualizujStatusPolaczenia(true, ip);
 
         QTcpSocket* socket = m_server->clientSocket();
         if (socket)
@@ -63,8 +63,8 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    connect(m_server, &NetworkServer::clientDisconnected, this, [this]() {
-        aktualizujStatusPolaczenia(false);
+    connect(m_server, &NetworkServer::clientDisconnected, this, [this](const QString& ip) {
+        aktualizujStatusPolaczenia(false, ip);
     });
 
 
@@ -83,6 +83,11 @@ MainWindow::MainWindow(QWidget *parent)
         if(m_client && m_client->isConnected())
             sendCommand("reset");
     });
+
+    connect(ui->trybTaktowaniacomboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+                trybTaktowania = (index == 0) ? TrybTaktowania::Jednostronne : TrybTaktowania::Obustronne;
+            });
 
     initSimulation();
 
@@ -151,17 +156,16 @@ std::unique_ptr<PID> MainWindow::updatePIDParams()
 {
 
     double kp = ui->kpLabel->value();
+    if(m_client != nullptr)
+        sendValue(0x10, kp);
     double ti = ui->tiLabel->value();
+    if(m_client != nullptr)
+        sendValue(0x11, ti);
     double td = ui->tdLabel->value();
+    if(m_client != nullptr)
+        sendValue(0x12, td);
 
     return std::make_unique<PID>(kp, ti, td);
-
-    if(m_client != nullptr)
-    {
-        sendValue(0x10, kp);
-        sendValue(0x11, ti);
-        sendValue(0x12, td);
-    }
 }
 
 
@@ -313,9 +317,30 @@ void MainWindow::startSimulation() {
             throw std::logic_error("Symulacja nie została poprawnie zainicjalizowana.");
         }
 
+        if (ui->trybTaktowaniacomboBox->currentIndex() == 0)
+            trybTaktowania = TrybTaktowania::Jednostronne;
+        else
+            trybTaktowania = TrybTaktowania::Obustronne;
 
-        zoom(false);
-        m_timer->start(this->ui->interwalSpinBox->value());
+
+
+        if (trybTaktowania == TrybTaktowania::Obustronne) {
+
+            sendValue(0x32, ui->interwalSpinBox->value());
+
+            sendValue(0x33, m_symulacja->getNumerProbki());
+
+            sendValue(0x30, 0);
+
+            m_timer->start(ui->interwalSpinBox->value());
+
+            qDebug() << "Symulacja uruchomiona (obustronne taktowanie)";
+        }
+        else {
+            zoom(false);
+            m_timer->start(ui->interwalSpinBox->value());
+            qDebug() << "Symulacja uruchomiona (jednostronne taktowanie)";
+        }
 
     } catch (const std::exception) {
         //QMessageBox::critical(this, "Błąd", ex.what());
@@ -324,8 +349,12 @@ void MainWindow::startSimulation() {
 }
 
 void MainWindow::stopSimulation() {
-    m_timer->stop();
-    zoom(true);
+    if (trybTaktowania == TrybTaktowania::Obustronne) {
+        sendValue(0x31, 0); // zatrzymaj po stronie ARX
+        m_timer->stop();
+    } else {
+        m_timer->stop();
+    }
 }
 
 void MainWindow::resetSimulation() {
@@ -341,9 +370,10 @@ void MainWindow::resetSimulation() {
     uchybPlot->replot();
     initSimulation();
     m_time = 0;
+    m_symulacja->ustawNumerProbki(0);
 }
 
-void MainWindow::updateAllParams() {
+void MainWindow::updateAllParams(bool restart) {
     if(m_time == 0)
     {
         return;
@@ -366,7 +396,10 @@ void MainWindow::updateAllParams() {
                 TypSygnalu type = static_cast<TypSygnalu>(ui->sygnalcomboBox->currentIndex());
                 m_symulacja->getWartoscZadana()->updateParams(type, ui->amplitudaLabel->value(), ui->okresLabel->value(), ui->cyklLabel->value(), ui->aktywacjaLabel->value());
 
-                m_timer->start(ui->interwalSpinBox->value());
+                if(restart)
+                {
+                    m_timer->start(ui->interwalSpinBox->value());
+                }
             }
 
 
@@ -393,6 +426,16 @@ void MainWindow::updateSimulation() {
         double iComponent;
         double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
         double sterowanie;
+
+        if (trybTaktowania == TrybTaktowania::Obustronne) {
+            double u = m_symulacja->getPID()->oblicz(setpoint, measured);
+            double y = measured;
+
+            m_symulacja->inkrementujNumerProbki();
+            sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
+            sendValue(0x01, y);
+            sendValue(0x02, u);
+        }
 
         if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Model ARX")
             sendValue(0x01, measured);
@@ -529,6 +572,7 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
         {
             m_server->startListening(1234);
         }
+
     }
     else
     {
@@ -541,7 +585,7 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
             m_server->stopListening();
         }
 
-        aktualizujStatusPolaczenia(false);
+        aktualizujStatusPolaczenia(false, ip);
     }
 
     blokujGUIWDanymTrybie(sieciowy);
@@ -579,10 +623,15 @@ void MainWindow::blokujGUIWDanymTrybie(bool sieciowy)
     }
 }
 
-void MainWindow::aktualizujStatusPolaczenia(bool connected)
+void MainWindow::aktualizujStatusPolaczenia(bool connected, const QString& ip)
 {
     if (connected) {
-        ui->connectionStatusLabel->setText("Połączono");
+        if(ui->RoleComboBox->currentText() == "Model ARX")
+        {
+            ui->connectionStatusLabel->setText("Połączono");
+            ui->connectionStatusLabel->setStyleSheet("QLabel { color: green; font-weight: bold; }");
+        }
+        ui->connectionStatusLabel->setText("Połączono z: " + ip);
         ui->connectionStatusLabel->setStyleSheet("QLabel { color: green; font-weight: bold; }");
     } else {
         ui->connectionStatusLabel->setText("Brak połączenia");
@@ -634,7 +683,6 @@ void MainWindow::onReadyRead()
         case 0x02: //sterowanie PID
             qDebug() << "Sterowanie (S):" << value;
             m_symulacja->setSterowanie(value);
-           // m_arx->krok(value);
             break;
         case 0x10: //kp
             qDebug() << "Kp:" << value;
@@ -668,12 +716,39 @@ void MainWindow::onReadyRead()
             qDebug() << "Czas aktywacji:" << value;
             ui->aktywacjaLabel->setValue(value);
             break;
+        case 0x30: // start obustronne
+            m_timer->start();
+            break;
+        case 0x31: // stop obustronne
+            m_timer->stop();
+            break;
+        case 0x32: // interwał obustronne
+            m_timer->setInterval(static_cast<int>(value));
+            break;
+        case 0x33: {// numer próbki
+            int zdalnyNumer = static_cast<int>(value);
+            int lokalnyNumer = m_symulacja->getNumerProbki();
+
+            aktualizujStatusSynchronizacji(lokalnyNumer, zdalnyNumer);
+
+            if (zdalnyNumer != lokalnyNumer) {
+                qWarning() << "Niesynchronizowane próbki!"
+                           << "Lokalna:" << lokalnyNumer
+                           << "Zdalna:" << zdalnyNumer;
+            } else {
+                qDebug() << "Próbki zsynchronizowane (nr" << lokalnyNumer << ")";
+            }
+            break;
+        }
         default:
             qDebug() << "Nieznany typ wiadomości:" << type;
             break;
         }
 
+        if(type >= 0x10 && type <= 0x24)
+            updateAllParams(false);
     }
+
 }
 
 void MainWindow::sendValue(float type, double value)
@@ -713,3 +788,25 @@ double MainWindow::receiveValue()
 
 }
 
+void MainWindow::aktualizujStatusSynchronizacji(int lokalny, int zdalny)
+{
+    int roznica = std::abs(lokalny - zdalny);
+
+    QString tekst = QString("Synchronizacja: %1 (lokalna: %2, zdalna: %3)")
+                        .arg(roznica == 0 ? "OK" :
+                                 roznica == 1 ? "OPÓŹNIENIE" :
+                                 "BŁĄD")
+                        .arg(lokalny)
+                        .arg(zdalny);
+
+    QString kolor = roznica == 0 ? "green" :
+                        roznica == 1 ? "orange" :
+                        "red";
+
+    ui->syncStatusLabel->setText(tekst);
+    ui->syncStatusLabel->setStyleSheet(QString(
+                                           "QLabel { font-weight: bold; color: %1; }").arg(kolor));
+
+    if(trybTaktowania == TrybTaktowania::Jednostronne)
+        ui->syncStatusLabel->setText(" ");
+}

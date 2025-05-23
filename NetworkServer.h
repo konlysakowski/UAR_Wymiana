@@ -20,8 +20,8 @@ public:
     QTcpServer* serever() const {return m_server;}
 
 signals:
-    void clientConnected();
-    void clientDisconnected();
+    void clientConnected(const QString&);
+    void clientDisconnected(const QString&);
 
 private:
     QTcpServer *m_server;

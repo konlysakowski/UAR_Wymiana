@@ -27,7 +27,7 @@ private slots:
     void stopSimulation();
     void resetSimulation();
     void updateSimulation();
-    void updateAllParams();
+    void updateAllParams(bool restart = true);
 
     void on_zmienARX_clicked();
 
@@ -35,7 +35,7 @@ private slots:
 
 
     void on_networkModeCheckBox_stateChanged(int state);
-    void aktualizujStatusPolaczenia(bool connected);
+    void aktualizujStatusPolaczenia(bool connected, const QString& ip);
 
 private:
     Ui::MainWindow *ui;
@@ -73,5 +73,13 @@ private:
     void sendCommand(QString);
     void sendValue(float t, double v);
     double receiveValue();
+
+    enum class TrybTaktowania {
+        Jednostronne,
+        Obustronne
+    };
+
+    TrybTaktowania trybTaktowania = TrybTaktowania::Jednostronne;
+    void aktualizujStatusSynchronizacji(int lokalny, int zdalny);
 
 };

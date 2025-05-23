@@ -26,9 +26,13 @@ public:
     }
     void setZmierzone(double);
     void setSterowanie(double);
+    int getNumerProbki() const { return m_numerProbki; }
+    void ustawNumerProbki(int n) { m_numerProbki = n; }
+    void inkrementujNumerProbki() { ++m_numerProbki; }
 protected:
         std::unique_ptr<ARX> m_ARX;
         std::unique_ptr<PID> m_PID;
         std::unique_ptr<WartoscZadana> m_WartoscZadana;
         double m_zadane, m_zmierzone, m_u;
+        int m_numerProbki = 0;
     };

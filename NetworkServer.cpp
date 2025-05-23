@@ -7,13 +7,15 @@ NetworkServer::NetworkServer(QObject *parent)
     connect(m_server, &QTcpServer::newConnection, [this]()
     {
         m_clientSocket = m_server->nextPendingConnection();
+        QString adres = m_clientSocket->peerAddress().toString();
         connect(m_clientSocket, &QTcpSocket::disconnected, [this]()
         {
+            QString adres = m_clientSocket->peerAddress().toString();
             m_clientSocket->deleteLater();
             m_clientSocket = nullptr;
-            emit clientDisconnected();
+            emit clientDisconnected(adres);
         });
-        emit clientConnected();
+        emit clientConnected(adres);
     });
 
 }
