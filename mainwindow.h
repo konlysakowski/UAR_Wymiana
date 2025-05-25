@@ -37,6 +37,8 @@ private slots:
     void on_networkModeCheckBox_stateChanged(int state);
     void aktualizujStatusPolaczenia(bool connected, const QString& ip);
 
+    void on_trybTaktowaniacomboBox_currentIndexChanged(int index);
+
 private:
     Ui::MainWindow *ui;
 

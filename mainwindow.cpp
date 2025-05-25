@@ -85,9 +85,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(ui->trybTaktowaniacomboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-                trybTaktowania = (index == 0) ? TrybTaktowania::Jednostronne : TrybTaktowania::Obustronne;
-            });
+            this, &MainWindow::on_trybTaktowaniacomboBox_currentIndexChanged);
 
     initSimulation();
 
@@ -317,10 +315,14 @@ void MainWindow::startSimulation() {
             throw std::logic_error("Symulacja nie została poprawnie zainicjalizowana.");
         }
 
-        if (ui->trybTaktowaniacomboBox->currentIndex() == 0)
-            trybTaktowania = TrybTaktowania::Jednostronne;
-        else
-            trybTaktowania = TrybTaktowania::Obustronne;
+
+        if(ui->RoleComboBox->currentText() == "Regulator") {
+            if (ui->trybTaktowaniacomboBox->currentIndex() == 0) {
+                trybTaktowania = TrybTaktowania::Jednostronne;
+            } else {
+                trybTaktowania = TrybTaktowania::Obustronne;
+            }
+        }
 
 
 
@@ -330,7 +332,7 @@ void MainWindow::startSimulation() {
 
             sendValue(0x33, m_symulacja->getNumerProbki());
 
-            sendValue(0x30, 0);
+            sendValue(0x30, 1);
 
             m_timer->start(ui->interwalSpinBox->value());
 
@@ -338,6 +340,7 @@ void MainWindow::startSimulation() {
         }
         else {
             zoom(false);
+           // sendValue(0x30, 0);
             m_timer->start(ui->interwalSpinBox->value());
             qDebug() << "Symulacja uruchomiona (jednostronne taktowanie)";
         }
@@ -558,6 +561,16 @@ void MainWindow::on_resetI_clicked()
 
 void MainWindow::on_networkModeCheckBox_stateChanged(int state)
 {
+
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "Zmiana trybu sieciowego", "Czy na pewno chcesz zmienić tryb pracy sieciowej?", QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) {
+        ui->networkModeCheckBox->blockSignals(true);
+        ui->networkModeCheckBox->setChecked(!ui->networkModeCheckBox->isChecked());
+        ui->networkModeCheckBox->blockSignals(false);
+        return;
+    }
+
     bool sieciowy = state == Qt::Checked;
     QString rola = ui->RoleComboBox->currentText();
     QString ip = ui->ipLineEdit->text();
@@ -619,6 +632,7 @@ void MainWindow::blokujGUIWDanymTrybie(bool sieciowy)
             ui->stopButton->setDisabled(sieciowy);
             ui->resetButton->setDisabled(sieciowy);
             ui->aktualizujButton->setDisabled(sieciowy);
+            ui->trybTaktowaniacomboBox->setDisabled(sieciowy);
 
     }
 }
@@ -716,9 +730,13 @@ void MainWindow::onReadyRead()
             qDebug() << "Czas aktywacji:" << value;
             ui->aktywacjaLabel->setValue(value);
             break;
-        case 0x30: // start obustronne
-            m_timer->start();
+        case 0x30: {// start obustronne
+            if(trybTaktowania == TrybTaktowania::Obustronne)
+            {
+                m_timer->start();
+            }
             break;
+        }
         case 0x31: // stop obustronne
             m_timer->stop();
             break;
@@ -738,6 +756,16 @@ void MainWindow::onReadyRead()
             } else {
                 qDebug() << "Próbki zsynchronizowane (nr" << lokalnyNumer << ")";
             }
+            break;
+        }
+        case 0x34: //tryb taktowania
+        {
+            int tryb = static_cast<int>(value);
+            trybTaktowania = (tryb == 0) ? TrybTaktowania::Jednostronne : TrybTaktowania::Obustronne;
+            ui->trybTaktowaniacomboBox->setCurrentIndex(tryb);
+            if(trybTaktowania == TrybTaktowania::Jednostronne)
+                ui->syncStatusLabel->setText(" ");
+            qDebug() << "Model ARX: otrzymano tryb:" << tryb;
             break;
         }
         default:
@@ -793,14 +821,12 @@ void MainWindow::aktualizujStatusSynchronizacji(int lokalny, int zdalny)
     int roznica = std::abs(lokalny - zdalny);
 
     QString tekst = QString("Synchronizacja: %1 (lokalna: %2, zdalna: %3)")
-                        .arg(roznica == 0 ? "OK" :
-                                 roznica == 1 ? "OPÓŹNIENIE" :
-                                 "BŁĄD")
+                        .arg(roznica == 0 ? "OK" : roznica <= 5 ? "OPÓŹNIENIE" : "BŁĄD")
                         .arg(lokalny)
                         .arg(zdalny);
 
     QString kolor = roznica == 0 ? "green" :
-                        roznica == 1 ? "orange" :
+                        roznica <= 5 ? "orange" :
                         "red";
 
     ui->syncStatusLabel->setText(tekst);
@@ -810,3 +836,19 @@ void MainWindow::aktualizujStatusSynchronizacji(int lokalny, int zdalny)
     if(trybTaktowania == TrybTaktowania::Jednostronne)
         ui->syncStatusLabel->setText(" ");
 }
+
+void MainWindow::on_trybTaktowaniacomboBox_currentIndexChanged(int index)
+{
+    if (ui->RoleComboBox->currentText() != "Regulator")
+        return;
+
+    trybTaktowania = (index == 0) ? TrybTaktowania::Jednostronne
+                                  : TrybTaktowania::Obustronne;
+
+    sendValue(0x34, index);
+
+    if(index == 0){
+        ui->syncStatusLabel->setText(" ");
+    }
+}
+
