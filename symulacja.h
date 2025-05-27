@@ -29,6 +29,8 @@ public:
     int getNumerProbki() const { return m_numerProbki; }
     void ustawNumerProbki(int n) { m_numerProbki = n; }
     void inkrementujNumerProbki() { ++m_numerProbki; }
+    double getZmierzone() {return m_zmierzone;}
+    double getZadane() { return m_zadane; }
 protected:
         std::unique_ptr<ARX> m_ARX;
         std::unique_ptr<PID> m_PID;

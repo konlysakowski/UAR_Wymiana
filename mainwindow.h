@@ -34,10 +34,13 @@ private slots:
     void on_resetI_clicked();
 
 
-    void on_networkModeCheckBox_stateChanged(int state);
+   // void on_networkModeCheckBox_stateChanged(int state);
     void aktualizujStatusPolaczenia(bool connected, const QString& ip);
 
     void on_trybTaktowaniacomboBox_currentIndexChanged(int index);
+
+
+    void on_networkModeCheckBox_clicked(bool checked);
 
 private:
     Ui::MainWindow *ui;

@@ -341,6 +341,7 @@ void MainWindow::startSimulation() {
         else {
             zoom(false);
            // sendValue(0x30, 0);
+            sendValue(0x33, m_symulacja->getNumerProbki());
             m_timer->start(ui->interwalSpinBox->value());
             qDebug() << "Symulacja uruchomiona (jednostronne taktowanie)";
         }
@@ -418,30 +419,14 @@ void MainWindow::updateAllParams(bool restart) {
     }
 }
 
-
-
 void MainWindow::updateSimulation() {
-    try {
         double setpoint = m_symulacja->getWartoscZadana()->generuj();
-        double measured = m_prevOutput;
+        double measured = m_symulacja->getZmierzone();
         double error = setpoint - measured;
         double pComponent;
         double iComponent;
         double dComponent = m_symulacja->getPID()->obliczD(setpoint, measured);
         double sterowanie;
-
-        if (trybTaktowania == TrybTaktowania::Obustronne) {
-            double u = m_symulacja->getPID()->oblicz(setpoint, measured);
-            double y = measured;
-
-            m_symulacja->inkrementujNumerProbki();
-            sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
-            sendValue(0x01, y);
-            sendValue(0x02, u);
-        }
-
-        if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Model ARX")
-            sendValue(0x01, measured);
 
         if(ui->liczenieCalkiLabel->isChecked() == true)
         {
@@ -456,8 +441,33 @@ void MainWindow::updateSimulation() {
              sterowanie = m_symulacja->getPID()->oblicz(setpoint, measured);
         }
 
-        if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Regulator")
+        if(m_client->isConnected() && ui->RoleComboBox->currentText() == "Regulator") {
             sendValue(0x02, sterowanie);
+            sendValue(0x50, setpoint);
+            sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
+        }
+
+        if (trybTaktowania == TrybTaktowania::Obustronne) {
+            double u = m_symulacja->getPID()->oblicz(setpoint, measured);
+            double y = m_symulacja->getZmierzone();
+
+            m_symulacja->inkrementujNumerProbki();
+            sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
+            sendValue(0x01, y);
+            sendValue(0x02, u);
+        }else
+        {
+            m_symulacja->inkrementujNumerProbki();
+        }
+
+
+
+
+        // if(m_server->isClientConnected() && ui->RoleComboBox->currentText() == "Model ARX")
+        // {
+        //     measured = m_symulacja->getARX()->krok(sterowanie);
+        //     sendValue(0x01, measured);
+        // }
 
 
         m_symulacja->setZadane(setpoint);
@@ -479,9 +489,18 @@ void MainWindow::updateSimulation() {
             m_x = m_time;
             zadanaPlot->graph(0)->addData(m_time-1,setpoint);
             zadanaPlot->graph(1)->addData(m_time-1,measured);
-            sterowaniePlot->graph(0)->addData(m_time-1,pComponent);
-            sterowaniePlot->graph(1)->addData(m_time-1,iComponent);
-            sterowaniePlot->graph(2)->addData(m_time-1,dComponent);
+            if(ui->networkModeCheckBox->isChecked()) {
+                if(ui->RoleComboBox->currentText() == "Regulator") {
+                    sterowaniePlot->graph(0)->addData(m_time-1,pComponent);
+                    sterowaniePlot->graph(1)->addData(m_time-1,iComponent);
+                    sterowaniePlot->graph(2)->addData(m_time-1,dComponent);
+                }
+            } else {
+                sterowaniePlot->graph(0)->addData(m_time-1,pComponent);
+                sterowaniePlot->graph(1)->addData(m_time-1,iComponent);
+                sterowaniePlot->graph(2)->addData(m_time-1,dComponent);
+            }
+
             if(ui->liczenieCalkiLabel->isChecked() == true)
             {
                 sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz_TiWSumie(setpoint,measured));
@@ -490,8 +509,13 @@ void MainWindow::updateSimulation() {
             {
                 sterowaniePlot->graph(3)->addData(m_time-1,m_symulacja->getPID()->oblicz(setpoint,measured));
             }
-
-            uchybPlot->graph(0)->addData(m_time-1, error);
+            if(ui->networkModeCheckBox->isChecked()) {
+                if(ui->RoleComboBox->currentText() == "Regulator") {
+                    uchybPlot->graph(0)->addData(m_time-1, error);
+                }
+            }else {
+                uchybPlot->graph(0)->addData(m_time-1, error);
+            }
             if(m_x > 100)
             {
                 zadanaPlot->xAxis->setRange((m_x-100), m_x);
@@ -516,10 +540,6 @@ void MainWindow::updateSimulation() {
             m_prevSetpoint = setpoint;
 
 
-    } catch (const std::exception) {
-        //QMessageBox::critical(this, "Błąd symulacji", ex.what());
-        stopSimulation();
-    }
 }
 
 void MainWindow::zoom(bool stan)
@@ -559,19 +579,26 @@ void MainWindow::on_resetI_clicked()
 
 
 
-void MainWindow::on_networkModeCheckBox_stateChanged(int state)
+void MainWindow::on_networkModeCheckBox_clicked(bool checked)
 {
+    QMessageBox msgBox;
+    msgBox.setWindowTitle("Zmiana trybu sieciowego");
+    msgBox.setText("Czy na pewno chcesz " + QString(checked ? "włączyć" : "wyłączyć") + " tryb sieciowy?");
+    msgBox.setIcon(QMessageBox::Question);
 
-    QMessageBox::StandardButton reply = QMessageBox::question(this, "Zmiana trybu sieciowego", "Czy na pewno chcesz zmienić tryb pracy sieciowej?", QMessageBox::Yes | QMessageBox::No);
+    QPushButton* takButton = msgBox.addButton(tr("Tak"), QMessageBox::YesRole);
+    QPushButton* nieButton = msgBox.addButton(tr("Nie"), QMessageBox::NoRole);
 
-    if (reply != QMessageBox::Yes) {
+    msgBox.exec();
+
+    if (msgBox.clickedButton() != takButton) {
         ui->networkModeCheckBox->blockSignals(true);
-        ui->networkModeCheckBox->setChecked(!ui->networkModeCheckBox->isChecked());
+        ui->networkModeCheckBox->setChecked(!checked);
         ui->networkModeCheckBox->blockSignals(false);
         return;
     }
 
-    bool sieciowy = state == Qt::Checked;
+    bool sieciowy = checked;
     QString rola = ui->RoleComboBox->currentText();
     QString ip = ui->ipLineEdit->text();
 
@@ -580,6 +607,10 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
         if (rola == "Regulator")
         {
             m_client->connectToServer(ip, 1234);
+            QTcpSocket* socket = m_client->socket();
+            if (socket) {
+                connect(socket, &QTcpSocket::readyRead, this, &MainWindow::onReadyRead);
+            }
         }
         else if (rola == "Model ARX")
         {
@@ -603,6 +634,53 @@ void MainWindow::on_networkModeCheckBox_stateChanged(int state)
 
     blokujGUIWDanymTrybie(sieciowy);
 }
+
+
+
+// void MainWindow::on_networkModeCheckBox_stateChanged(int state)
+// {
+
+//     QMessageBox::StandardButton reply = QMessageBox::question(this, "Zmiana trybu sieciowego", "Czy na pewno chcesz zmienić tryb pracy sieciowej?", QMessageBox::Yes | QMessageBox::No);
+
+//     if (reply != QMessageBox::Yes) {
+//         ui->networkModeCheckBox->blockSignals(true);
+//         ui->networkModeCheckBox->setChecked(!ui->networkModeCheckBox->isChecked());
+//         ui->networkModeCheckBox->blockSignals(false);
+//         return;
+//     }
+
+//     bool sieciowy = state == Qt::Checked;
+//     QString rola = ui->RoleComboBox->currentText();
+//     QString ip = ui->ipLineEdit->text();
+
+//     if (sieciowy)
+//     {
+//         if (rola == "Regulator")
+//         {
+//             m_client->connectToServer(ip, 1234);
+//         }
+//         else if (rola == "Model ARX")
+//         {
+//             m_server->startListening(1234);
+//         }
+
+//     }
+//     else
+//     {
+//         if (rola == "Regulator")
+//         {
+//             m_client->disconnectFromHost();
+//         }
+//         else if (rola == "Model ARX")
+//         {
+//             m_server->stopListening();
+//         }
+
+//         aktualizujStatusPolaczenia(false, ip);
+//     }
+
+//     blokujGUIWDanymTrybie(sieciowy);
+// }
 
 void MainWindow::blokujGUIWDanymTrybie(bool sieciowy)
 {
@@ -662,16 +740,14 @@ void MainWindow::onReadyRead()
         return;
     }
 
-    static QByteArray bufor;
+    QByteArray buf = socket->readAll();
 
-    bufor = bufor + socket->readAll();
-
-    while(bufor.size() >= 9)
+    while(buf.size() >= 9)
     {
-        quint8 type = static_cast<quint8>(bufor[0]);
+        quint8 type = buf[0];
         double value;
-        memcpy(&value, bufor.constData() + 1, sizeof(double));
-        bufor.remove(0, 9);
+        memcpy(&value, buf.constData() + 1, sizeof(double));
+        buf.remove(0, 9);
 
         qDebug() << "Odebrano: " << type << " " << value;
 
@@ -694,10 +770,13 @@ void MainWindow::onReadyRead()
             qDebug() << "Wartość regulowana (W):" << value;
             m_symulacja->setZmierzone(value);
             break;
-        case 0x02: //sterowanie PID
+        case 0x02: {//sterowanie PID
             qDebug() << "Sterowanie (S):" << value;
             m_symulacja->setSterowanie(value);
+            double y =  m_symulacja->getARX()->krok(value);
+            sendValue(0x01, y);
             break;
+        }
         case 0x10: //kp
             qDebug() << "Kp:" << value;
             ui->kpLabel->setValue(value);
@@ -768,6 +847,9 @@ void MainWindow::onReadyRead()
             qDebug() << "Model ARX: otrzymano tryb:" << tryb;
             break;
         }
+        case 0x50:
+            m_symulacja->setZadane(value);
+            break;
         default:
             qDebug() << "Nieznany typ wiadomości:" << type;
             break;
@@ -833,8 +915,8 @@ void MainWindow::aktualizujStatusSynchronizacji(int lokalny, int zdalny)
     ui->syncStatusLabel->setStyleSheet(QString(
                                            "QLabel { font-weight: bold; color: %1; }").arg(kolor));
 
-    if(trybTaktowania == TrybTaktowania::Jednostronne)
-        ui->syncStatusLabel->setText(" ");
+    // if(trybTaktowania == TrybTaktowania::Jednostronne)
+    //     ui->syncStatusLabel->setText(" ");
 }
 
 void MainWindow::on_trybTaktowaniacomboBox_currentIndexChanged(int index)
@@ -847,8 +929,11 @@ void MainWindow::on_trybTaktowaniacomboBox_currentIndexChanged(int index)
 
     sendValue(0x34, index);
 
-    if(index == 0){
-        ui->syncStatusLabel->setText(" ");
-    }
+    // if(index == 0){
+    //     ui->syncStatusLabel->setText(" ");
+    // }
 }
+
+
+
 
