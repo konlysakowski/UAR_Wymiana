@@ -465,8 +465,10 @@ void MainWindow::updateSimulation() {
 
         // if(m_server->isClientConnected() && ui->RoleComboBox->currentText() == "Model ARX")
         // {
-        //     measured = m_symulacja->getARX()->krok(sterowanie);
+        //     //receiveValue();
+        //    // measured = m_symulacja->getARX()->krok(sterowanie);
         //     sendValue(0x01, measured);
+        //     sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
         // }
 
 
@@ -740,7 +742,8 @@ void MainWindow::onReadyRead()
         return;
     }
 
-    QByteArray buf = socket->readAll();
+    static QByteArray buf;
+    buf += socket->readAll();
 
     while(buf.size() >= 9)
     {
@@ -774,7 +777,9 @@ void MainWindow::onReadyRead()
             qDebug() << "Sterowanie (S):" << value;
             m_symulacja->setSterowanie(value);
             double y =  m_symulacja->getARX()->krok(value);
+            //m_symulacja->inkrementujNumerProbki();
             sendValue(0x01, y);
+            sendValue(0x33, static_cast<double>(m_symulacja->getNumerProbki()));
             break;
         }
         case 0x10: //kp
@@ -842,8 +847,8 @@ void MainWindow::onReadyRead()
             int tryb = static_cast<int>(value);
             trybTaktowania = (tryb == 0) ? TrybTaktowania::Jednostronne : TrybTaktowania::Obustronne;
             ui->trybTaktowaniacomboBox->setCurrentIndex(tryb);
-            if(trybTaktowania == TrybTaktowania::Jednostronne)
-                ui->syncStatusLabel->setText(" ");
+            // if(trybTaktowania == TrybTaktowania::Jednostronne)
+            //     ui->syncStatusLabel->setText(" ");
             qDebug() << "Model ARX: otrzymano tryb:" << tryb;
             break;
         }
